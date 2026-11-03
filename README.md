@@ -4,7 +4,7 @@ EV charging-aware route optimizer for CIS 505 (Fall 2026). The search minimizes 
 
 The algorithm is not implemented yet. This tag is the Phase 1 skeleton: frozen JSON contracts, importable stubs, and the repository layout from the PRD.
 
-Full specification: [docs/PRD.md](docs/PRD.md).
+Full specification: [docs/PRD.md](docs/PRD.md). Task list: [docs/roadmap.md](docs/roadmap.md).
 
 ## Layout
 
