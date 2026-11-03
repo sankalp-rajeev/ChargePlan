@@ -34,7 +34,7 @@ make experiments     # python -m experiments.run_all (stub)
 make demo            # python -m visualizer.app (stub)
 ```
 
-Shared optimizer entry point, once the CLI is implemented:
+Shared optimizer entry point:
 
 ```text
 python -m optimizer.cli --algorithm {label_setting,astar,greedy,exact} \
@@ -42,7 +42,7 @@ python -m optimizer.cli --algorithm {label_setting,astar,greedy,exact} \
     --out algorithm_result.json
 ```
 
-`greedy` on the command line writes `"algorithm": "greedy_frc"`. Exit code 0 covers both feasible and infeasible trips. Unreadable or invalid inputs exit non-zero.
+`greedy` on the command line is the FRC baseline and must write `"algorithm": "greedy_frc"`. Exit code 0 covers both feasible and infeasible trips. Unreadable or invalid inputs exit non-zero. The four solvers are still stubs, so a real query exits non-zero until those algorithms exist.
 
 ## Phase 1 freeze (v0.1)
 
