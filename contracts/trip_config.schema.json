@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sankalp-rajeev/ChargePlan/contracts/trip_config.schema.json",
+  "title": "TripConfig",
+  "description": "Vehicle and trip inputs for one optimization query. Experiments that vary initial SOC in percent convert to kWh before writing this file. Edge energy is c times distance_miles and is not stored on the graph.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "origin",
+    "destination",
+    "battery_capacity_kwh",
+    "initial_soc_kwh",
+    "reserve_kwh",
+    "consumption_kwh_per_mile",
+    "soc_step_kwh"
+  ],
+  "properties": {
+    "origin": {
+      "description": "Node id of the trip origin in canonical_graph.json.",
+      "type": "string",
+      "minLength": 1
+    },
+    "destination": {
+      "description": "Node id of the trip destination in canonical_graph.json.",
+      "type": "string",
+      "minLength": 1
+    },
+    "battery_capacity_kwh": {
+      "description": "Usable battery capacity B in kWh. Discretization rounds this down.",
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "initial_soc_kwh": {
+      "description": "Initial battery energy b0 in kWh. Discretization rounds this down.",
+      "type": "number",
+      "minimum": 0
+    },
+    "reserve_kwh": {
+      "description": "Minimum battery reserve r in kWh. Discretization rounds this up.",
+      "type": "number",
+      "minimum": 0
+    },
+    "consumption_kwh_per_mile": {
+      "description": "Fixed energy-consumption rate c in kWh per mile.",
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "soc_step_kwh": {
+      "description": "SOC discretization step Delta E in kWh.",
+      "type": "number",
+      "exclusiveMinimum": 0
+    }
+  }
+}

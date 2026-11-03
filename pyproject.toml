@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chargeplan"
+version = "0.1.0"
+description = "EV charging-aware route optimizer"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "Sankalp Rajeev" },
+  { name = "Shannon" },
+]
+dependencies = [
+  "jsonschema==4.26.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==9.2.0",
+  "ruff==0.17.3",
+]
+
+[tool.setuptools.packages.find]
+include = ["optimizer*", "data_pipeline*", "visualizer*", "experiments*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["optimizer", "data_pipeline", "visualizer", "experiments", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

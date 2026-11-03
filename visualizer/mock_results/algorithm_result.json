@@ -1,0 +1,40 @@
+{
+  "status": "FEASIBLE",
+  "algorithm": "label_setting",
+  "total_time_minutes": 286.4,
+  "driving_time_minutes": 251.0,
+  "charging_time_minutes": 35.4,
+  "total_distance_miles": 282.5,
+  "number_of_charging_stops": 2,
+  "soc_step_kwh": 1.0,
+  "route_node_ids": [
+    "origin",
+    "station_1",
+    "station_2",
+    "destination"
+  ],
+  "events": [
+    {
+      "type": "drive",
+      "from": "origin",
+      "to": "station_1",
+      "distance_miles": 55.2,
+      "duration_minutes": 51.3,
+      "energy_kwh_discretized": 17,
+      "soc_before_kwh": 54,
+      "soc_after_kwh": 37
+    },
+    {
+      "type": "charge",
+      "station": "station_1",
+      "soc_before_kwh": 37,
+      "soc_after_kwh": 49,
+      "duration_minutes": 4.8
+    }
+  ],
+  "metrics": {
+    "runtime_ms": 18.4,
+    "states_expanded": 2143,
+    "peak_states_stored": 5120
+  }
+}

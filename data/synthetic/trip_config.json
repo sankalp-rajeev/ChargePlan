@@ -1,0 +1,9 @@
+{
+  "origin": "origin",
+  "destination": "destination",
+  "battery_capacity_kwh": 70,
+  "initial_soc_kwh": 54,
+  "reserve_kwh": 7,
+  "consumption_kwh_per_mile": 0.30,
+  "soc_step_kwh": 1.0
+}

@@ -1,0 +1,58 @@
+{
+  "nodes": [
+    {
+      "id": "origin",
+      "type": "origin",
+      "lat": 42.3314,
+      "lon": -83.0458,
+      "charge_rate_kw": null
+    },
+    {
+      "id": "station_1",
+      "type": "charger",
+      "lat": 42.2808,
+      "lon": -83.7430,
+      "charge_rate_kw": 150
+    },
+    {
+      "id": "station_2",
+      "type": "charger",
+      "lat": 42.2917,
+      "lon": -85.5872,
+      "charge_rate_kw": 50
+    },
+    {
+      "id": "destination",
+      "type": "destination",
+      "lat": 41.8781,
+      "lon": -87.6298,
+      "charge_rate_kw": null
+    }
+  ],
+  "edges": [
+    {
+      "from": "origin",
+      "to": "station_1",
+      "distance_miles": 55.2,
+      "drive_time_minutes": 51.3
+    },
+    {
+      "from": "station_1",
+      "to": "station_2",
+      "distance_miles": 120.0,
+      "drive_time_minutes": 110.0
+    },
+    {
+      "from": "station_2",
+      "to": "destination",
+      "distance_miles": 140.0,
+      "drive_time_minutes": 130.0
+    },
+    {
+      "from": "origin",
+      "to": "destination",
+      "distance_miles": 280.0,
+      "drive_time_minutes": 250.0
+    }
+  ]
+}

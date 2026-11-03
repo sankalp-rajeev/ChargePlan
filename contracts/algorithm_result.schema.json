@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sankalp-rajeev/ChargePlan/contracts/algorithm_result.schema.json",
+  "title": "AlgorithmResult",
+  "description": "One algorithm's plan for one query. algorithm is label_setting, astar, greedy_frc, or exact. status is FEASIBLE or INFEASIBLE. An infeasible result has empty route_node_ids and events and still reports metrics. SOC fields use discretized accounting and are a lower bound on true SOC.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "algorithm",
+    "total_time_minutes",
+    "driving_time_minutes",
+    "charging_time_minutes",
+    "total_distance_miles",
+    "number_of_charging_stops",
+    "soc_step_kwh",
+    "route_node_ids",
+    "events",
+    "metrics"
+  ],
+  "properties": {
+    "status": {
+      "enum": ["FEASIBLE", "INFEASIBLE"]
+    },
+    "algorithm": {
+      "enum": ["label_setting", "astar", "greedy_frc", "exact"]
+    },
+    "total_time_minutes": {
+      "type": "number",
+      "minimum": 0
+    },
+    "driving_time_minutes": {
+      "type": "number",
+      "minimum": 0
+    },
+    "charging_time_minutes": {
+      "type": "number",
+      "minimum": 0
+    },
+    "total_distance_miles": {
+      "type": "number",
+      "minimum": 0
+    },
+    "number_of_charging_stops": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "soc_step_kwh": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "route_node_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/drive_event"
+          },
+          {
+            "$ref": "#/$defs/charge_event"
+          }
+        ]
+      }
+    },
+    "metrics": {
+      "$ref": "#/$defs/metrics"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "INFEASIBLE"
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "route_node_ids": {
+            "maxItems": 0
+          },
+          "events": {
+            "maxItems": 0
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "drive_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "from",
+        "to",
+        "distance_miles",
+        "duration_minutes",
+        "energy_kwh_discretized",
+        "soc_before_kwh",
+        "soc_after_kwh"
+      ],
+      "properties": {
+        "type": {
+          "const": "drive"
+        },
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1
+        },
+        "distance_miles": {
+          "type": "number",
+          "minimum": 0
+        },
+        "duration_minutes": {
+          "type": "number",
+          "minimum": 0
+        },
+        "energy_kwh_discretized": {
+          "description": "Edge energy after rounding up to a multiple of soc_step_kwh.",
+          "type": "number",
+          "minimum": 0
+        },
+        "soc_before_kwh": {
+          "type": "number",
+          "minimum": 0
+        },
+        "soc_after_kwh": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "charge_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "station",
+        "soc_before_kwh",
+        "soc_after_kwh",
+        "duration_minutes"
+      ],
+      "properties": {
+        "type": {
+          "const": "charge"
+        },
+        "station": {
+          "type": "string",
+          "minLength": 1
+        },
+        "soc_before_kwh": {
+          "type": "number",
+          "minimum": 0
+        },
+        "soc_after_kwh": {
+          "type": "number",
+          "minimum": 0
+        },
+        "duration_minutes": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runtime_ms", "states_expanded", "peak_states_stored"],
+      "properties": {
+        "runtime_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "states_expanded": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "peak_states_stored": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

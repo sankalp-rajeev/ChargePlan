@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Secrets
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# OSM and routing caches
+.osm_cache/
+**/.osm_cache/
+*.osm
+*.osm.pbf
+*.pbf
+*.graphml
+
+# Local snapshots and generated graphs
+data/raw/**
+!data/raw/.gitkeep
+data/processed/**
+!data/processed/.gitkeep
+
+# Experiment outputs
+results/**
+!results/.gitkeep
+plots/**
+!plots/.gitkeep
+*.csv

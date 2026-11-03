@@ -1,0 +1,9 @@
+# Sankalp owns the optimizer and the frozen contracts.
+# Shannon owns the greedy baseline file, the data pipeline, and the visualizer.
+# The later, more specific pattern wins for greedy_baseline.py.
+
+/optimizer/ @sankalp-rajeev
+/contracts/ @sankalp-rajeev
+/optimizer/greedy_baseline.py @shannonmendonca
+/data_pipeline/ @shannonmendonca
+/visualizer/ @shannonmendonca
