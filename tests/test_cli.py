@@ -121,12 +121,69 @@ def test_solver_must_use_the_frozen_algorithm_name(tmp_path: Path, monkeypatch) 
     assert not out.exists()
 
 
-@pytest.mark.parametrize("algorithm", ["astar", "greedy", "exact"])
+@pytest.mark.parametrize("algorithm", ["astar", "greedy"])
 def test_unimplemented_solver_exits_nonzero(tmp_path: Path, capsys, algorithm: str) -> None:
     code, out = _run(tmp_path, algorithm)
     assert code == 1
     assert not out.exists()
     assert "not implemented" in capsys.readouterr().err
+
+
+def test_exact_tiny_query_exits_zero(tmp_path: Path) -> None:
+    graph = tmp_path / "graph.json"
+    config = tmp_path / "config.json"
+    graph.write_text(
+        json.dumps(
+            {
+                "nodes": [
+                    {
+                        "id": "origin",
+                        "type": "origin",
+                        "lat": 42.0,
+                        "lon": -83.0,
+                        "charge_rate_kw": None,
+                    },
+                    {
+                        "id": "destination",
+                        "type": "destination",
+                        "lat": 42.0,
+                        "lon": -83.0,
+                        "charge_rate_kw": None,
+                    },
+                ],
+                "edges": [
+                    {
+                        "from": "origin",
+                        "to": "destination",
+                        "distance_miles": 4,
+                        "drive_time_minutes": 12,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    config.write_text(
+        json.dumps(
+            {
+                "origin": "origin",
+                "destination": "destination",
+                "battery_capacity_kwh": 20,
+                "initial_soc_kwh": 10,
+                "reserve_kwh": 0,
+                "consumption_kwh_per_mile": 1,
+                "soc_step_kwh": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    code, out = _run(tmp_path, "exact", graph=str(graph), config=str(config))
+    assert code == 0
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert written["algorithm"] == "exact"
+    assert written["status"] == "FEASIBLE"
+    assert written["route_node_ids"] == ["origin", "destination"]
+    assert written["total_time_minutes"] == 12
 
 
 def test_label_setting_sample_exits_zero(tmp_path: Path) -> None:
