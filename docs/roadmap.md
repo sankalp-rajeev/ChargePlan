@@ -8,7 +8,11 @@ S1 is on `main` via [PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/2
 
 S2 is on `main` via [PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24) (`22c3529`). Issue #2 is closed. Label-setting search, route reconstruction, and the Detroit–Chicago plan (322.5 minutes, two stops) are on `main`.
 
-S3 is implemented on `opt/exact-solver` in [PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25) (`255d8bc`) and is not on `main` yet, so its box stays open. The exact solver agrees with label-setting on the hand-built cases, 30 seeded tiny graphs, and the Detroit–Chicago sample (feasibility and the lexicographic label). Pytest on this branch: 57 passed, 2 skipped. Ruff was clean. The skipped tests are the greedy baseline and the S4 suite placeholder. Remaining step: merge PR #25. Issue #3 stays open until that merge.
+S3 is on `main` via [PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25) (`38dc994`). Issue #3 is closed.
+
+S4 is in open [PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26) and is not on `main`, so its box stays open. That pull request contains T1–T14 and the 100-graph exact comparison. T16 is not complete; it still waits on the FRC baseline (H4).
+
+S10 is implemented on `opt/astar` and is not on `main` yet, so its box stays open. A* matches label-setting on the hand cases, 100 seeded graphs, and the Detroit–Chicago sample. Both expand 127 states on that sample. A westward chain expands fewer states. No real-data graph is in `data/processed` yet. Pytest on this branch: 61 passed, 3 skipped. Ruff was clean. Remaining step: merge the S10 pull request. Issue #10 stays open until that merge.
 
 ## Sankalp
 
@@ -17,12 +21,12 @@ Optimizer, exact solver, A*, and the algorithm experiments.
 | Done | Task | Due |
 | --- | --- | --- |
 | - [x] | [S1](https://github.com/sankalp-rajeev/ChargePlan/issues/1) Shared runtime, merged in [PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23). `model.py` and `cli.py` load the frozen files, apply Section 7.1 rounding, and dispatch all four algorithm names. 1 minute = 60,000 ms. Initial SOC and reserve must be at most battery capacity. | Nov 5 |
-| - [x] | [S2](https://github.com/sankalp-rajeev/ChargePlan/issues/2) Battery-state label-setting optimizer and route reconstruction, merged in [PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24) (`22c3529`). Lexicographic labels, battery and reserve constraints, stop counting, and result reconstruction. A* still raises `NotImplementedError`. | Nov 12 |
-| - [ ] | [S3](https://github.com/sankalp-rajeev/ChargePlan/issues/3) Exact backtracking solver for tiny instances, in [PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25). Depth-first search chooses a whole charge amount at each visit and does not reuse the label-setting search. It matches label-setting on the hand cases, 30 seeded tiny graphs, and the Detroit–Chicago sample. Tests pass (57 passed, 2 skipped). Remaining: merge to `main`. | Nov 12 |
-| - [ ] | [S4](https://github.com/sankalp-rajeev/ChargePlan/issues/4) Synthetic correctness tests T1–T16. | Nov 12 |
+| - [x] | [S2](https://github.com/sankalp-rajeev/ChargePlan/issues/2) Battery-state label-setting optimizer and route reconstruction, merged in [PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24) (`22c3529`). Lexicographic labels, battery and reserve constraints, stop counting, and result reconstruction. | Nov 12 |
+| - [x] | [S3](https://github.com/sankalp-rajeev/ChargePlan/issues/3) Exact backtracking solver, merged in [PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25) (`38dc994`). Depth-first search chooses a whole charge amount at each visit and does not reuse the label-setting search. | Nov 12 |
+| - [ ] | [S4](https://github.com/sankalp-rajeev/ChargePlan/issues/4) Synthetic correctness tests T1–T16, in open [PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26). Not on `main`. T16 is not complete; it still waits on the FRC baseline (H4). | Nov 12 |
 | - [ ] | [S5](https://github.com/sankalp-rajeev/ChargePlan/issues/5) Complexity analysis for the report. | Nov 17 |
 | - [ ] | [S6](https://github.com/sankalp-rajeev/ChargePlan/issues/6) Experiment runner and metrics collection. | Nov 17 |
-| - [ ] | [S10](https://github.com/sankalp-rajeev/ChargePlan/issues/10) A* variant, admissibility argument, and `test_astar.py`. | Nov 17 |
+| - [ ] | [S10](https://github.com/sankalp-rajeev/ChargePlan/issues/10) A* variant. Admissible floored straight-line heuristic in the label-setting queue. Same lexicographic label as label-setting on the synthetic cases, 100 seeded graphs, and the Detroit–Chicago sample. Fewer states on a westward detour. T15 is in `test_astar.py`. Real-data comparison waits on S9. Tests: 61 passed, 3 skipped. Remaining: merge to `main`. | Nov 17 |
 | - [ ] | [S9](https://github.com/sankalp-rajeev/ChargePlan/issues/9) Run the real-data graph through the optimizer and write result files. | Nov 20 |
 | - [ ] | [S7](https://github.com/sankalp-rajeev/ChargePlan/issues/7) Experiments A, C, D, E, and J. | Nov 24 |
 | - [ ] | [S8](https://github.com/sankalp-rajeev/ChargePlan/issues/8) Algorithm sections of the report. | Dec 2 |

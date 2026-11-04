@@ -2,7 +2,7 @@
 
 EV charging-aware route optimizer for CIS 505 (Fall 2026). The search minimizes driving time plus charging time over a battery-expanded state graph. Sankalp Rajeev owns the optimizer and experiments. Shannon owns the data pipeline, the farthest-reachable-charger baseline, and the visualizer.
 
-The shared runtime is on `main` ([PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23), issue #1 closed). Label-setting search is on `main` ([PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24), issue #2 closed). The exact solver is in [PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25) and is waiting for review. A* and the greedy baseline are still stubs.
+The shared runtime is on `main` ([PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23), issue #1 closed). Label-setting search is on `main` ([PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24), issue #2 closed). The exact solver is on `main` ([PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25), issue #3 closed). The synthetic suite is in open [PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26); T16 is not complete. A* is implemented on `opt/astar` and is waiting for review. The greedy baseline is still a stub.
 
 Full specification: [docs/PRD.md](docs/PRD.md). Task list: [docs/roadmap.md](docs/roadmap.md).
 
@@ -10,14 +10,14 @@ Full specification: [docs/PRD.md](docs/PRD.md). Task list: [docs/roadmap.md](doc
 
 ```text
 contracts/          JSON schemas (graph, trip config, algorithm result)
-optimizer/          model.py and cli.py (shared), label-setting search, exact solver, FRC stub
+optimizer/          model.py and cli.py (shared), label-setting and A*, exact solver, FRC stub
 data_pipeline/      AFDC stations, OSM routing, canonical-graph export
 visualizer/         map, SOC chart, comparison; mock_results/ until real output exists
 data/synthetic/     schema samples used by the contract tests
 data/raw/           local snapshots (gitignored)
 data/processed/     reduced graphs (gitignored)
 experiments/        runners for Experiments A–J
-tests/              contract tests, label-setting cases, and exact-solver agreement
+tests/              contract tests, label-setting, exact agreement, and A* agreement
 results/            experiment CSVs (gitignored)
 plots/              experiment figures (gitignored)
 docs/PRD.md         product requirements
@@ -42,7 +42,7 @@ python -m optimizer.cli --algorithm {label_setting,astar,greedy,exact} \
     --out algorithm_result.json
 ```
 
-`greedy` on the command line is the FRC baseline and must write `"algorithm": "greedy_frc"`. Exit code 0 covers both feasible and infeasible trips. Unreadable or invalid inputs exit non-zero. `label_setting` runs the battery-state search. `exact` runs the tiny-instance backtracking solver. `astar` and `greedy` still exit non-zero.
+`greedy` on the command line is the FRC baseline and must write `"algorithm": "greedy_frc"`. Exit code 0 covers both feasible and infeasible trips. Unreadable or invalid inputs exit non-zero. `label_setting` runs the battery-state search. `astar` runs the same search with the straight-line heuristic. `exact` runs the tiny-instance backtracking solver. `greedy` still exits non-zero.
 
 ## Status
 
@@ -60,18 +60,26 @@ S2 is merged to `main` (`22c3529`). Issue #2 is closed.
 - Labels are `(time_ms, stops, distance)` and compare lexicographically.
 - A drive is legal only when arrival SOC stays at or above the reserve. A charge step is legal only at a charger and only up to capacity.
 - The first charge step of a visit counts as one stop. Consecutive steps become one charge event.
-- `use_heuristic=True` raises `NotImplementedError` until S10.
+- `use_heuristic=True` runs A* (S10). The label itself is unchanged; only the queue order uses `h`.
 
 The Detroit–Chicago sample is feasible: origin → station_1 → station_2 → destination, 322.5 minutes, two stops. The fast 150 kW stop is filled to 70 kWh so less time is spent at the 50 kW stop.
 
-S3 is implemented in [PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25) and is not on `main` yet. Issue #3 stays open until that pull request merges.
+S3 is merged to `main` (`38dc994`). Issue #3 is closed.
 
 - Depth-first enumeration. Each charger visit picks the whole charge amount, from 0 through the remaining capacity, in one decision.
 - The search does not import the label-setting module, `heapq`, or route reconstruction.
-- Branches stop for the reserve, for capacity, for a label that cannot beat the incumbent, and for a dominated `(node, flag)` record with at least as much battery.
-- On every hand-built case, on 30 seeded graphs of at most 4 nodes and battery capacity 8, and on the Detroit–Chicago sample, exact and label-setting agree on feasibility and on `(time, stops, distance)`.
+- On the hand-built cases, on 30 seeded graphs, and on the Detroit–Chicago sample, exact and label-setting agree on feasibility and on `(time, stops, distance)`.
 
-This branch is Ruff-clean, with pytest at 57 passed and 2 skipped (greedy baseline and the S4 suite placeholder).
+S4 is not on `main`. [PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26) is still open. T16 is not complete; it waits on the farthest-reachable-charger baseline (H4).
+
+S10 is implemented on `opt/astar` and is not on `main` yet. Issue #10 stays open until the pull request merges.
+
+- Queue priority is `(time_ms + h, stops, distance)`. `h(v)` is the straight-line distance to the destination divided by the fastest edge speed, floored to milliseconds.
+- Flooring and the integer edge times keep `h` admissible and consistent. `h` is zero at the destination, and it is zero everywhere if any edge has positive length and zero time.
+- T15: A* matches label-setting on the hand cases, 100 seeded graphs (`random.Random(505)`), and the Detroit–Chicago sample. Both expand 127 states on that sample. A chain of one-minute edges leading west expands fewer states under A*.
+- No canonical graph is in `data/processed` yet, so the real-data half of T15 is skipped until S9.
+
+This branch is Ruff-clean, with pytest at 61 passed and 3 skipped (the pre-S4 constraint placeholder, the greedy baseline, and the missing real-data graph).
 
 ## Phase 1 freeze (v0.1)
 

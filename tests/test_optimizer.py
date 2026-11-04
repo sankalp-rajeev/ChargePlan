@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from optimizer.battery_state_optimizer import solve
 from optimizer.cli import main
 from optimizer.model import write_result
@@ -395,12 +393,6 @@ def test_faster_path_replaces_a_stale_label() -> None:
     assert result["total_time_minutes"] == 2
     assert result["total_distance_miles"] == 2
     assert result["route_node_ids"] == ["origin", "mid", "destination"]
-
-
-def test_astar_is_not_implemented() -> None:
-    graph = _graph(_origin(), _destination(), edges=[])
-    with pytest.raises(NotImplementedError):
-        solve(graph, _config(), use_heuristic=True)
 
 
 def test_reconstruct_merges_five_charge_steps_into_one_stop() -> None:
