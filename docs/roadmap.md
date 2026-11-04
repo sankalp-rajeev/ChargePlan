@@ -4,7 +4,9 @@ Fall 2026. Check an item when the work is on `main`. Due dates are the phase mil
 
 The JSON schemas, samples, and repository skeleton are already on `main` (`v0.1-contracts-frozen`, Nov 3). A box is checked only when that task is on `main`.
 
-S1 is implemented on `opt/shared-runtime` in [PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23). Pytest: 30 passed, 4 skipped. Ruff is clean. The four skips are placeholders for the search, the exact solver, the greedy baseline, and the route-level constraint cases. Issue #1 stays open until the PR is merged.
+S1 is on `main` via [PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23) (`141d0ff`). Issue #1 is closed.
+
+S2 is implemented on `opt/label-setting` in [PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24) (`9ac46ac`) and is not on `main` yet, so its box stays open. Pytest on that branch: 51 passed, 3 skipped. Ruff was clean. The skipped tests are the exact solver, the greedy baseline, and the S4 suite placeholder. Remaining step: merge PR #24. Issue #2 stays open until that merge.
 
 ## Sankalp
 
@@ -12,8 +14,8 @@ Optimizer, exact solver, A*, and the algorithm experiments.
 
 | Done | Task | Due |
 | --- | --- | --- |
-| - [ ] | [S1](https://github.com/sankalp-rajeev/ChargePlan/issues/1) Shared runtime. `model.py` and `cli.py` load the frozen files, apply Section 7.1 rounding, and dispatch all four algorithm names. 1 minute = 60,000 ms. Initial SOC and reserve must be at most battery capacity. Remaining: merge [PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23), then close issue #1. Blocker: `main` still requires one approving review, and the PR author cannot approve it. | Nov 5 |
-| - [ ] | [S2](https://github.com/sankalp-rajeev/ChargePlan/issues/2) Battery-state label-setting optimizer and route reconstruction. | Nov 12 |
+| - [x] | [S1](https://github.com/sankalp-rajeev/ChargePlan/issues/1) Shared runtime, merged in [PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23). `model.py` and `cli.py` load the frozen files, apply Section 7.1 rounding, and dispatch all four algorithm names. 1 minute = 60,000 ms. Initial SOC and reserve must be at most battery capacity. | Nov 5 |
+| - [ ] | [S2](https://github.com/sankalp-rajeev/ChargePlan/issues/2) Battery-state label-setting optimizer and route reconstruction, in [PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24). Lexicographic labels, battery and reserve constraints, stop counting, and result reconstruction are implemented. A* still raises `NotImplementedError`. Tests pass (51 passed, 3 skipped). Remaining: merge to `main`. | Nov 12 |
 | - [ ] | [S3](https://github.com/sankalp-rajeev/ChargePlan/issues/3) Exact backtracking solver for tiny instances. | Nov 12 |
 | - [ ] | [S4](https://github.com/sankalp-rajeev/ChargePlan/issues/4) Synthetic correctness tests T1–T16. | Nov 12 |
 | - [ ] | [S5](https://github.com/sankalp-rajeev/ChargePlan/issues/5) Complexity analysis for the report. | Nov 17 |
