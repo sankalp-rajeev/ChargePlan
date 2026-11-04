@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from optimizer import battery_state_optimizer, exact_solver, greedy_baseline
 from optimizer.cli import main
 
@@ -119,8 +121,20 @@ def test_solver_must_use_the_frozen_algorithm_name(tmp_path: Path, monkeypatch) 
     assert not out.exists()
 
 
-def test_unimplemented_solver_exits_nonzero(tmp_path: Path, capsys) -> None:
-    code, out = _run(tmp_path, "label_setting")
+@pytest.mark.parametrize("algorithm", ["astar", "greedy", "exact"])
+def test_unimplemented_solver_exits_nonzero(tmp_path: Path, capsys, algorithm: str) -> None:
+    code, out = _run(tmp_path, algorithm)
     assert code == 1
     assert not out.exists()
     assert "not implemented" in capsys.readouterr().err
+
+
+def test_label_setting_sample_exits_zero(tmp_path: Path) -> None:
+    code, out = _run(tmp_path, "label_setting")
+    assert code == 0
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert written["status"] == "FEASIBLE"
+    assert written["algorithm"] == "label_setting"
+    assert written["route_node_ids"] == ["origin", "station_1", "station_2", "destination"]
+    assert written["number_of_charging_stops"] == 2
+    assert written["total_time_minutes"] == 322.5
