@@ -2,12 +2,12 @@
 
 T1–T14 run label-setting and the exact solver and require the same
 feasibility and the same lexicographic label ``(time, stops, distance)``.
-T15 needs A* (S10). T16 needs the farthest-reachable-charger baseline (H4).
-Those two tests record the missing dependency. They do not claim the
-comparison has passed.
+T15 runs that same comparison between A* and label-setting. T16 still waits
+on the farthest-reachable-charger baseline (H4) and does not claim that
+comparison.
 
-The 100-graph check uses ``random.Random(505)`` so a disagreement can be
-rebuilt from the case index.
+The 100-graph exact check uses ``random.Random(505)``. The geographic A*
+sweep lives in ``test_astar.py``.
 """
 
 from __future__ import annotations
@@ -418,11 +418,34 @@ def test_t14_stop_counting_for_one_visit_two_chargers_and_two_visits() -> None:
     assert built["route_node_ids"] == ["origin", "charger", "waypoint", "charger", "destination"]
 
 
-def test_t15_astar_agreement_is_blocked_on_s10() -> None:
-    """T15 is not complete. A* is S10 and still raises NotImplementedError."""
-    graph = _graph(_origin(), _destination(), edges=[_edge("origin", "destination", 4, 12)])
-    with pytest.raises(NotImplementedError):
-        label_solve(graph, _config(), use_heuristic=True)
+def test_t15_astar_agrees_with_label_setting() -> None:
+    """T15. A* returns the same label and expands no more states.
+
+    The 100-graph geographic sweep is in ``test_astar.py``. T16 stays
+    pending until H4 implements the farthest-reachable-charger baseline.
+    """
+    direct = _graph(
+        _origin(),
+        _destination(),
+        edges=[_edge("origin", "destination", 4, 12)],
+    )
+    _astar_agrees(direct, _config())
+    graph = json.loads((SYNTHETIC / "canonical_graph.json").read_text(encoding="utf-8"))
+    config = json.loads((SYNTHETIC / "trip_config.json").read_text(encoding="utf-8"))
+    plain, guided = _astar_agrees(graph, config)
+    assert plain["total_time_minutes"] == 322.5
+    assert guided["number_of_charging_stops"] == 2
+    assert guided["route_node_ids"] == plain["route_node_ids"]
+
+
+def _astar_agrees(graph: dict, config: dict) -> tuple[dict, dict]:
+    plain = label_solve(graph, config, use_heuristic=False)
+    guided = label_solve(graph, config, use_heuristic=True)
+    assert plain["algorithm"] == "label_setting"
+    assert guided["algorithm"] == "astar"
+    assert _objective(guided) == _objective(plain)
+    assert guided["metrics"]["states_expanded"] <= plain["metrics"]["states_expanded"]
+    return plain, guided
 
 
 def test_t16_greedy_failure_case_is_blocked_on_h4() -> None:
