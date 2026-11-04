@@ -22,6 +22,7 @@ from optimizer.model import haversine_miles, minutes_to_ms
 ROOT = Path(__file__).resolve().parents[1]
 SYNTHETIC = ROOT / "data" / "synthetic"
 PROCESSED = ROOT / "data" / "processed"
+_LENGTH_TOLERANCE_MILES = 1e-6
 
 
 def _node(
@@ -50,7 +51,23 @@ def _edge(start: str, end: str, miles: float, minutes: float) -> dict:
 
 
 def _graph(*nodes: dict, edges: list[dict]) -> dict:
-    return {"nodes": list(nodes), "edges": edges}
+    graph = {"nodes": list(nodes), "edges": edges}
+    _require_straight_line(graph)
+    return graph
+
+
+def _require_straight_line(graph: dict) -> None:
+    """Reject a fixture whose road is shorter than the frozen haversine check."""
+    nodes = {node["id"]: node for node in graph["nodes"]}
+    for edge in graph["edges"]:
+        start = nodes[edge["from"]]
+        end = nodes[edge["to"]]
+        straight = haversine_miles(start["lat"], start["lon"], end["lat"], end["lon"])
+        if edge["distance_miles"] + _LENGTH_TOLERANCE_MILES < straight:
+            raise AssertionError(
+                f"edge {edge['from']!r} -> {edge['to']!r} is shorter than the "
+                f"straight-line distance ({edge['distance_miles']} < {straight})"
+            )
 
 
 def _config(**overrides: float | str) -> dict:
@@ -125,10 +142,16 @@ def test_t15_hand_cases_and_sample_agree() -> None:
 
 def test_t15_one_hundred_seeded_graphs_agree() -> None:
     rng = random.Random(505)
+    nonzero = 0
     for index in range(100):
         graph, config = _random_query(rng, index)
-        plain, guided = _agree(graph, config)
-        assert guided["metrics"]["states_expanded"] <= plain["metrics"]["states_expanded"]
+        nodes = {node["id"]: node for node in graph["nodes"]}
+        heuristic = _heuristic_ms(nodes, graph["edges"], str(config["destination"]))
+        assert heuristic[str(config["destination"])] == 0
+        assert heuristic[str(config["origin"])] > 0
+        nonzero += 1
+        _agree(graph, config)
+    assert nonzero == 100
 
 
 def test_t15_real_data_graph_when_present() -> None:
@@ -184,9 +207,12 @@ def test_heuristic_is_admissible_and_consistent_on_the_sample() -> None:
 
 
 def test_zero_time_edge_keeps_the_heuristic_admissible() -> None:
+    # 0.05 degrees of longitude at this latitude is about 2.6 miles, so a
+    # 5-mile road still covers the straight line. Zero drive time makes the
+    # speed unbounded, which forces h to zero.
     graph = _graph(
         _node("origin", "origin", None),
-        _node("spur", "charger", None, lon=-83.2),
+        _node("spur", "charger", None, lon=-83.05),
         _node("destination", "destination", None),
         edges=[
             _edge("origin", "spur", 5, 0),
@@ -194,6 +220,13 @@ def test_zero_time_edge_keeps_the_heuristic_admissible() -> None:
         ],
     )
     nodes = {node["id"]: node for node in graph["nodes"]}
+    straight = haversine_miles(
+        nodes["origin"]["lat"],
+        nodes["origin"]["lon"],
+        nodes["spur"]["lat"],
+        nodes["spur"]["lon"],
+    )
+    assert straight <= 5
     heuristic = _heuristic_ms(nodes, graph["edges"], "destination")
     assert heuristic == {"origin": 0, "spur": 0, "destination": 0}
     plain, guided = _agree(graph, _config())
@@ -215,19 +248,23 @@ def _random_query(rng: random.Random, index: int) -> tuple[dict, dict]:
         capacity = 3
         probability = 0.25
     origin_rate = 60 if rng.random() < 0.25 else None
-    nodes = [_node("origin", "origin", origin_rate), _node("destination", "destination", None)]
+    nodes = [
+        _node("origin", "origin", origin_rate, *_coordinate(index, 0)),
+        _node("destination", "destination", None, *_coordinate(index, 1)),
+    ]
     for charger_index in range(charger_count):
         rate = 60 if rng.random() < 0.5 else 30
-        nodes.append(_node(f"c{charger_index}", "charger", rate))
-    ids = [node["id"] for node in nodes]
+        lat, lon = _coordinate(index, 2 + charger_index)
+        nodes.append(_node(f"c{charger_index}", "charger", rate, lat, lon))
+    located = {node["id"]: node for node in nodes}
+    ids = list(located)
     edges = []
     for start in ids:
         for end in ids:
             if start != end and rng.random() < probability:
-                miles = rng.randint(1, 4)
-                edges.append(_edge(start, end, miles, rng.randint(1, 6)))
+                edges.append(_road(rng, located, start, end))
     if not any(edge["from"] == "origin" for edge in edges):
-        edges.append(_edge("origin", "destination", rng.randint(1, 3), rng.randint(1, 4)))
+        edges.append(_road(rng, located, "origin", "destination"))
     initial = rng.randint(0, capacity)
     reserve = rng.randint(0, min(2, capacity))
     config = _config(
@@ -236,3 +273,23 @@ def _random_query(rng: random.Random, index: int) -> tuple[dict, dict]:
         reserve_kwh=reserve,
     )
     return _graph(*nodes, edges=edges), config
+
+
+def _coordinate(index: int, slot: int) -> tuple[float, float]:
+    """Spread nodes by about 0.7–5 miles so the straight-line heuristic is positive."""
+    lat = 42.0 + ((index * 3 + slot * 5) % 7) * 0.015
+    lon = -83.0 + ((index * 5 + slot * 3) % 9) * 0.015
+    return lat, lon
+
+
+def _road(rng: random.Random, nodes: dict[str, dict], start: str, end: str) -> dict:
+    straight = haversine_miles(
+        nodes[start]["lat"],
+        nodes[start]["lon"],
+        nodes[end]["lat"],
+        nodes[end]["lon"],
+    )
+    miles = float(rng.randint(1, 4))
+    if miles + _LENGTH_TOLERANCE_MILES < straight:
+        miles = straight
+    return _edge(start, end, miles, rng.randint(1, 6))

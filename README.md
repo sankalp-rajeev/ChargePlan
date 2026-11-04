@@ -2,7 +2,7 @@
 
 EV charging-aware route optimizer for CIS 505 (Fall 2026). The search minimizes driving time plus charging time over a battery-expanded state graph. Sankalp Rajeev owns the optimizer and experiments. Shannon owns the data pipeline, the farthest-reachable-charger baseline, and the visualizer.
 
-The shared runtime is on `main` ([PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23), issue #1 closed). Label-setting search is on `main` ([PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24), issue #2 closed). The exact solver is on `main` ([PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25), issue #3 closed). The synthetic suite is in open [PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26); T16 is not complete. A* is in [PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/27) and is waiting for review. The greedy baseline is still a stub.
+The shared runtime is on `main` ([PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23), issue #1 closed). Label-setting search is on `main` ([PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24), issue #2 closed). The exact solver is on `main` ([PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25), issue #3 closed). The synthetic suite is on `main` ([PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26), issue #4 still open because T16 waits on H4). A* is in [PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/27) and is waiting for review. The greedy baseline is still a stub.
 
 Full specification: [docs/PRD.md](docs/PRD.md). Task list: [docs/roadmap.md](docs/roadmap.md).
 
@@ -17,7 +17,7 @@ data/synthetic/     schema samples used by the contract tests
 data/raw/           local snapshots (gitignored)
 data/processed/     reduced graphs (gitignored)
 experiments/        runners for Experiments A–J
-tests/              contract tests, label-setting, exact agreement, and A* agreement
+tests/              contract, exact, synthetic T1–T16, and A* agreement tests
 results/            experiment CSVs (gitignored)
 plots/              experiment figures (gitignored)
 docs/PRD.md         product requirements
@@ -68,18 +68,25 @@ S3 is merged to `main` (`38dc994`). Issue #3 is closed.
 
 - Depth-first enumeration. Each charger visit picks the whole charge amount, from 0 through the remaining capacity, in one decision.
 - The search does not import the label-setting module, `heapq`, or route reconstruction.
-- On the hand-built cases, on 30 seeded graphs, and on the Detroit–Chicago sample, exact and label-setting agree on feasibility and on `(time, stops, distance)`.
+- Branches stop for the reserve, for capacity, for a label that cannot beat the incumbent, and for a dominated `(node, flag)` record with at least as much battery.
+- On the hand-built cases, on 30 seeded graphs of at most 4 nodes and battery capacity 8, and on the Detroit–Chicago sample, exact and label-setting agree on feasibility and on `(time, stops, distance)`.
 
-S4 is not on `main`. [PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26) is still open. T16 is not complete; it waits on the farthest-reachable-charger baseline (H4).
+S4 is on `main` via [PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26) (`0e96666`). Issue #4 stays open because T16 is not complete.
+
+- T1–T14: direct route, one mandatory stop, nearer slow charger, partial charging, infeasible destination, reserve, capacity boundary, fast-charger detour, two stops, stop-then-distance ties, low starting SOC, no extra charge, conservative rounding, and stop counting.
+- A second visit to the same charger is not the unique optimum when that departure is already feasible after the first fill. Five steps at one charger stay one stop, and two chargers stay two stops.
+- 100 graphs from `random.Random(505)`, with 3–8 nodes and 1–6 chargers, match the exact solver on feasibility and `(time, stops, distance)`.
+- T15 compares A* with label-setting on the direct trip and the Detroit–Chicago sample. The 100-graph geographic sweep is in `test_astar.py`.
+- T16 is not complete. The failure graph is fixed, and label-setting finds a one-stop plan. `greedy_baseline.solve` still raises `NotImplementedError` (H4).
 
 S10 is implemented in [PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/27) and is not on `main` yet. Issue #10 stays open until that pull request merges.
 
 - Queue priority is `(time_ms + h, stops, distance)`. `h(v)` is the straight-line distance to the destination divided by the fastest edge speed, floored to milliseconds.
 - Flooring and the integer edge times keep `h` admissible and consistent. `h` is zero at the destination, and it is zero everywhere if any edge has positive length and zero time.
-- T15: A* matches label-setting on the hand cases, 100 seeded graphs (`random.Random(505)`), and the Detroit–Chicago sample. Both expand 127 states on that sample. A chain of one-minute edges leading west expands fewer states under A*.
+- The 100 A* graphs are spread over a few miles, every road covers the straight-line distance, and `h(origin)` is positive on all 100. A* matches label-setting and expands no more states. Both expand 127 states on the Detroit–Chicago sample. A westward chain expands fewer states.
 - No canonical graph is in `data/processed` yet, so the real-data half of T15 is skipped until S9.
 
-This branch is Ruff-clean, with pytest at 61 passed and 3 skipped (the pre-S4 constraint placeholder, the greedy baseline, and the missing real-data graph).
+This branch is Ruff-clean, with pytest at 80 passed and 2 skipped (the greedy baseline and the missing real-data graph).
 
 ## Phase 1 freeze (v0.1)
 
