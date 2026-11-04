@@ -2,7 +2,7 @@
 
 EV charging-aware route optimizer for CIS 505 (Fall 2026). The search minimizes driving time plus charging time over a battery-expanded state graph. Sankalp Rajeev owns the optimizer and experiments. Shannon owns the data pipeline, the farthest-reachable-charger baseline, and the visualizer.
 
-The shared runtime is on `main` ([PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23), issue #1 closed). Label-setting search is on `main` ([PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24), issue #2 closed). The exact solver is implemented on `opt/exact-solver` and is waiting for review. A* and the greedy baseline are still stubs.
+The shared runtime is on `main` ([PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23), issue #1 closed). Label-setting search is on `main` ([PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24), issue #2 closed). The exact solver is in [PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25) and is waiting for review. A* and the greedy baseline are still stubs.
 
 Full specification: [docs/PRD.md](docs/PRD.md). Task list: [docs/roadmap.md](docs/roadmap.md).
 
@@ -64,7 +64,7 @@ S2 is merged to `main` (`22c3529`). Issue #2 is closed.
 
 The Detroit–Chicago sample is feasible: origin → station_1 → station_2 → destination, 322.5 minutes, two stops. The fast 150 kW stop is filled to 70 kWh so less time is spent at the 50 kW stop.
 
-S3 is implemented on `opt/exact-solver` and is not on `main` yet. Issue #3 stays open until the pull request merges.
+S3 is implemented in [PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25) and is not on `main` yet. Issue #3 stays open until that pull request merges.
 
 - Depth-first enumeration. Each charger visit picks the whole charge amount, from 0 through the remaining capacity, in one decision.
 - The search does not import the label-setting module, `heapq`, or route reconstruction.
