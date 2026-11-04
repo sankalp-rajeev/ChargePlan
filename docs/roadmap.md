@@ -12,7 +12,7 @@ S3 is on `main` via [PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/2
 
 S4 is in open [PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26) and is not on `main`, so its box stays open. That pull request contains T1–T14 and the 100-graph exact comparison. T16 is not complete; it still waits on the FRC baseline (H4).
 
-S10 is implemented on `opt/astar` and is not on `main` yet, so its box stays open. A* matches label-setting on the hand cases, 100 seeded graphs, and the Detroit–Chicago sample. Both expand 127 states on that sample. A westward chain expands fewer states. No real-data graph is in `data/processed` yet. Pytest on this branch: 61 passed, 3 skipped. Ruff was clean. Remaining step: merge the S10 pull request. Issue #10 stays open until that merge.
+S10 is implemented on `opt/astar` in [PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/27) (`246c929`) and is not on `main` yet, so its box stays open. A* matches label-setting on the hand cases, 100 seeded graphs, and the Detroit–Chicago sample. Both expand 127 states on that sample. A westward chain expands fewer states. No real-data graph is in `data/processed` yet. Pytest on this branch: 61 passed, 3 skipped. Ruff was clean. Remaining step: merge PR #27. Issue #10 stays open until that merge.
 
 ## Sankalp
 
@@ -26,7 +26,7 @@ Optimizer, exact solver, A*, and the algorithm experiments.
 | - [ ] | [S4](https://github.com/sankalp-rajeev/ChargePlan/issues/4) Synthetic correctness tests T1–T16, in open [PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26). Not on `main`. T16 is not complete; it still waits on the FRC baseline (H4). | Nov 12 |
 | - [ ] | [S5](https://github.com/sankalp-rajeev/ChargePlan/issues/5) Complexity analysis for the report. | Nov 17 |
 | - [ ] | [S6](https://github.com/sankalp-rajeev/ChargePlan/issues/6) Experiment runner and metrics collection. | Nov 17 |
-| - [ ] | [S10](https://github.com/sankalp-rajeev/ChargePlan/issues/10) A* variant. Admissible floored straight-line heuristic in the label-setting queue. Same lexicographic label as label-setting on the synthetic cases, 100 seeded graphs, and the Detroit–Chicago sample. Fewer states on a westward detour. T15 is in `test_astar.py`. Real-data comparison waits on S9. Tests: 61 passed, 3 skipped. Remaining: merge to `main`. | Nov 17 |
+| - [ ] | [S10](https://github.com/sankalp-rajeev/ChargePlan/issues/10) A* variant, in [PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/27). Admissible floored straight-line heuristic in the label-setting queue. Same lexicographic label as label-setting on the synthetic cases, 100 seeded graphs, and the Detroit–Chicago sample. Fewer states on a westward detour. T15 is in `test_astar.py`. Real-data comparison waits on S9. Tests: 61 passed, 3 skipped. Remaining: merge to `main`. | Nov 17 |
 | - [ ] | [S9](https://github.com/sankalp-rajeev/ChargePlan/issues/9) Run the real-data graph through the optimizer and write result files. | Nov 20 |
 | - [ ] | [S7](https://github.com/sankalp-rajeev/ChargePlan/issues/7) Experiments A, C, D, E, and J. | Nov 24 |
 | - [ ] | [S8](https://github.com/sankalp-rajeev/ChargePlan/issues/8) Algorithm sections of the report. | Dec 2 |

@@ -2,7 +2,7 @@
 
 EV charging-aware route optimizer for CIS 505 (Fall 2026). The search minimizes driving time plus charging time over a battery-expanded state graph. Sankalp Rajeev owns the optimizer and experiments. Shannon owns the data pipeline, the farthest-reachable-charger baseline, and the visualizer.
 
-The shared runtime is on `main` ([PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23), issue #1 closed). Label-setting search is on `main` ([PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24), issue #2 closed). The exact solver is on `main` ([PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25), issue #3 closed). The synthetic suite is in open [PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26); T16 is not complete. A* is implemented on `opt/astar` and is waiting for review. The greedy baseline is still a stub.
+The shared runtime is on `main` ([PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23), issue #1 closed). Label-setting search is on `main` ([PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24), issue #2 closed). The exact solver is on `main` ([PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25), issue #3 closed). The synthetic suite is in open [PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26); T16 is not complete. A* is in [PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/27) and is waiting for review. The greedy baseline is still a stub.
 
 Full specification: [docs/PRD.md](docs/PRD.md). Task list: [docs/roadmap.md](docs/roadmap.md).
 
@@ -72,7 +72,7 @@ S3 is merged to `main` (`38dc994`). Issue #3 is closed.
 
 S4 is not on `main`. [PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26) is still open. T16 is not complete; it waits on the farthest-reachable-charger baseline (H4).
 
-S10 is implemented on `opt/astar` and is not on `main` yet. Issue #10 stays open until the pull request merges.
+S10 is implemented in [PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/27) and is not on `main` yet. Issue #10 stays open until that pull request merges.
 
 - Queue priority is `(time_ms + h, stops, distance)`. `h(v)` is the straight-line distance to the destination divided by the fastest edge speed, floored to milliseconds.
 - Flooring and the integer edge times keep `h` admissible and consistent. `h` is zero at the destination, and it is zero everywhere if any edge has positive length and zero time.
