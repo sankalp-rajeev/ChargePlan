@@ -34,6 +34,9 @@ src = ["optimizer", "data_pipeline", "visualizer", "experiments", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["optimizer", "data_pipeline", "visualizer", "experiments"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]

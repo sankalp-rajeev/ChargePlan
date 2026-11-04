@@ -2,7 +2,9 @@
 
 Fall 2026. Check an item when the work is on `main`. Due dates are the phase milestones. Specification: [PRD.md](PRD.md).
 
-The JSON schemas, samples, and repository skeleton are already on `main` (`v0.1-contracts-frozen`, Nov 3). Every task below is still open.
+The JSON schemas, samples, and repository skeleton are already on `main` (`v0.1-contracts-frozen`, Nov 3). A box is checked only when that task is on `main`.
+
+S1 is implemented on `opt/shared-runtime` in [PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23). Pytest: 30 passed, 4 skipped. Ruff is clean. The four skips are placeholders for the search, the exact solver, the greedy baseline, and the route-level constraint cases. Issue #1 stays open until the PR is merged.
 
 ## Sankalp
 
@@ -10,7 +12,7 @@ Optimizer, exact solver, A*, and the algorithm experiments.
 
 | Done | Task | Due |
 | --- | --- | --- |
-| - [ ] | [S1](https://github.com/sankalp-rajeev/ChargePlan/issues/1) Mathematical formulation. Finish `optimizer/model.py` and the shared CLI. | Nov 5 |
+| - [ ] | [S1](https://github.com/sankalp-rajeev/ChargePlan/issues/1) Shared runtime. `model.py` and `cli.py` load the frozen files, apply Section 7.1 rounding, and dispatch all four algorithm names. 1 minute = 60,000 ms. Initial SOC and reserve must be at most battery capacity. Remaining: merge [PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23), then close issue #1. Blocker: `main` still requires one approving review, and the PR author cannot approve it. | Nov 5 |
 | - [ ] | [S2](https://github.com/sankalp-rajeev/ChargePlan/issues/2) Battery-state label-setting optimizer and route reconstruction. | Nov 12 |
 | - [ ] | [S3](https://github.com/sankalp-rajeev/ChargePlan/issues/3) Exact backtracking solver for tiny instances. | Nov 12 |
 | - [ ] | [S4](https://github.com/sankalp-rajeev/ChargePlan/issues/4) Synthetic correctness tests T1–T16. | Nov 12 |

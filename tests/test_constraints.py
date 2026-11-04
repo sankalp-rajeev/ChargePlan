@@ -1,11 +1,12 @@
-"""TODO: battery reserve, capacity, and rounding tests (S2, S4).
+"""Route-level reserve and capacity cases (S4).
 
-Cases T6, T7, and T13 land here once discretization exists.
+The 16.56 kWh edge that must consume 17 units is covered in ``test_model.py``.
+Accepting or rejecting a whole trip still waits for the search.
 """
 
 import pytest
 
 
-@pytest.mark.skip(reason="TODO: constraint tests are not implemented (S4)")
+@pytest.mark.skip(reason="TODO: route-level reserve and capacity cases are not implemented (S4)")
 def test_constraints_not_implemented() -> None:
-    """Placeholder until model.discretize exists."""
+    """Placeholder until the battery-state search exists."""
