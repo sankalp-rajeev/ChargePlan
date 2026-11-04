@@ -2,7 +2,7 @@
 
 EV charging-aware route optimizer for CIS 505 (Fall 2026). The search minimizes driving time plus charging time over a battery-expanded state graph. Sankalp Rajeev owns the optimizer and experiments. Shannon owns the data pipeline, the farthest-reachable-charger baseline, and the visualizer.
 
-The algorithm is not implemented yet. This tag is the Phase 1 skeleton: frozen JSON contracts, importable stubs, and the repository layout from the PRD.
+The shared runtime is implemented on `opt/shared-runtime` ([PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23)). It is not on `main` yet. The label-setting search, A*, the greedy baseline, and the exact solver are still stubs.
 
 Full specification: [docs/PRD.md](docs/PRD.md). Task list: [docs/roadmap.md](docs/roadmap.md).
 
@@ -17,7 +17,7 @@ data/synthetic/     schema samples used by the contract tests
 data/raw/           local snapshots (gitignored)
 data/processed/     reduced graphs (gitignored)
 experiments/        runners for Experiments A–J
-tests/              contract tests now; algorithm tests later
+tests/              contract tests and shared-runtime tests; algorithm tests later
 results/            experiment CSVs (gitignored)
 plots/              experiment figures (gitignored)
 docs/PRD.md         product requirements
@@ -42,7 +42,23 @@ python -m optimizer.cli --algorithm {label_setting,astar,greedy,exact} \
     --out algorithm_result.json
 ```
 
-`greedy` on the command line is the FRC baseline and must write `"algorithm": "greedy_frc"`. Exit code 0 covers both feasible and infeasible trips. Unreadable or invalid inputs exit non-zero. The four solvers are still stubs, so a real query exits non-zero until those algorithms exist.
+`greedy` on the command line is the FRC baseline and must write `"algorithm": "greedy_frc"`. Exit code 0 covers both feasible and infeasible trips. Unreadable or invalid inputs exit non-zero. A real query still exits non-zero because the four solvers are stubs.
+
+## Status
+
+Done in PR #23, not yet on `main`:
+
+- Load and validate `canonical_graph.json`, `trip_config.json`, and `algorithm_result.json`.
+- Section 7.1 rounding: capacity and initial energy round down, reserve and edge energy round up.
+- Initial SOC and reserve must be at most battery capacity, including after that rounding.
+- Label time converts at 60,000 ms per minute, half up.
+- One CLI dispatches `label_setting`, `astar`, `greedy`, and `exact`.
+
+Latest local test run on this branch: `ruff check` clean, pytest 30 passed and 4 skipped. The skipped tests are the unimplemented search, exact solver, greedy baseline, and route-level constraint cases.
+
+Remaining for S1: merge PR #23, then close issue #1. `main` still requires one approving review, and the author of the PR cannot approve it, so the merge is blocked until that review happens.
+
+Next implementation task after the merge: S2, the battery-state label-setting optimizer, on `opt/label-setting`.
 
 ## Phase 1 freeze (v0.1)
 
