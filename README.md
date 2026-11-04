@@ -2,7 +2,7 @@
 
 EV charging-aware route optimizer for CIS 505 (Fall 2026). The search minimizes driving time plus charging time over a battery-expanded state graph. Sankalp Rajeev owns the optimizer and experiments. Shannon owns the data pipeline, the farthest-reachable-charger baseline, and the visualizer.
 
-The shared runtime is on `main` ([PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23), issue #1 closed). Label-setting search is on `main` ([PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24), issue #2 closed). The exact solver is in [PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25) and is waiting for review. A* and the greedy baseline are still stubs.
+The shared runtime is on `main` ([PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23), issue #1 closed). Label-setting search is on `main` ([PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24), issue #2 closed). The exact solver is on `main` ([PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25), issue #3 closed). The synthetic suite is implemented on `opt/synthetic-tests` and is waiting for review. A* and the greedy baseline are still stubs, so T15 and T16 are not claimed.
 
 Full specification: [docs/PRD.md](docs/PRD.md). Task list: [docs/roadmap.md](docs/roadmap.md).
 
@@ -17,7 +17,7 @@ data/synthetic/     schema samples used by the contract tests
 data/raw/           local snapshots (gitignored)
 data/processed/     reduced graphs (gitignored)
 experiments/        runners for Experiments A–J
-tests/              contract tests, label-setting cases, and exact-solver agreement
+tests/              contract tests, label-setting, exact agreement, and T1–T16
 results/            experiment CSVs (gitignored)
 plots/              experiment figures (gitignored)
 docs/PRD.md         product requirements
@@ -64,14 +64,22 @@ S2 is merged to `main` (`22c3529`). Issue #2 is closed.
 
 The Detroit–Chicago sample is feasible: origin → station_1 → station_2 → destination, 322.5 minutes, two stops. The fast 150 kW stop is filled to 70 kWh so less time is spent at the 50 kW stop.
 
-S3 is implemented in [PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25) and is not on `main` yet. Issue #3 stays open until that pull request merges.
+S3 is merged to `main` (`38dc994`). Issue #3 is closed.
 
 - Depth-first enumeration. Each charger visit picks the whole charge amount, from 0 through the remaining capacity, in one decision.
 - The search does not import the label-setting module, `heapq`, or route reconstruction.
 - Branches stop for the reserve, for capacity, for a label that cannot beat the incumbent, and for a dominated `(node, flag)` record with at least as much battery.
-- On every hand-built case, on 30 seeded graphs of at most 4 nodes and battery capacity 8, and on the Detroit–Chicago sample, exact and label-setting agree on feasibility and on `(time, stops, distance)`.
+- On the hand-built cases, on 30 seeded graphs of at most 4 nodes and battery capacity 8, and on the Detroit–Chicago sample, exact and label-setting agree on feasibility and on `(time, stops, distance)`.
 
-This branch is Ruff-clean, with pytest at 57 passed and 2 skipped (greedy baseline and the S4 suite placeholder).
+S4 is implemented on `opt/synthetic-tests` and is not on `main` yet. Issue #4 stays open until the pull request merges.
+
+- T1–T14: direct route, one mandatory stop, nearer slow charger, partial charging, infeasible destination, reserve, capacity boundary, fast-charger detour, two stops, stop-then-distance ties, low starting SOC, no extra charge, conservative rounding, and stop counting.
+- A second visit to the same charger is not the unique optimum when that departure is already feasible after the first fill. The two-visit count is checked on an explicit trace. Five steps at one charger stay one stop, and two chargers stay two stops.
+- 100 graphs from `random.Random(505)`, with 3–8 nodes and 1–6 chargers, match the exact solver on feasibility and `(time, stops, distance)`. No disagreements.
+- T15 is not complete. `use_heuristic=True` still raises `NotImplementedError` (S10).
+- T16 is not complete. The graph where Section 12 should fail is fixed, and label-setting finds a one-stop plan. `greedy_baseline.solve` still raises `NotImplementedError` (H4).
+
+This branch is Ruff-clean, with pytest at 75 passed and 1 skipped (the greedy baseline placeholder).
 
 ## Phase 1 freeze (v0.1)
 
