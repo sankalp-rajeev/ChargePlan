@@ -2,7 +2,7 @@
 
 EV charging-aware route optimizer for CIS 505 (Fall 2026). The search minimizes driving time plus charging time over a battery-expanded state graph. Sankalp Rajeev owns the optimizer and experiments. Shannon owns the data pipeline, the farthest-reachable-charger baseline, and the visualizer.
 
-The shared runtime is on `main` ([PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23), issue #1 closed). Label-setting search is on `main` ([PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24), issue #2 closed). The exact solver is on `main` ([PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25), issue #3 closed). The synthetic suite is implemented on `opt/synthetic-tests` and is waiting for review. A* and the greedy baseline are still stubs, so T15 and T16 are not claimed.
+The shared runtime is on `main` ([PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23), issue #1 closed). Label-setting search is on `main` ([PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24), issue #2 closed). The exact solver is on `main` ([PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25), issue #3 closed). The synthetic suite is in [PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26) and is waiting for review. A* and the greedy baseline are still stubs, so T15 and T16 are not claimed.
 
 Full specification: [docs/PRD.md](docs/PRD.md). Task list: [docs/roadmap.md](docs/roadmap.md).
 
@@ -71,7 +71,7 @@ S3 is merged to `main` (`38dc994`). Issue #3 is closed.
 - Branches stop for the reserve, for capacity, for a label that cannot beat the incumbent, and for a dominated `(node, flag)` record with at least as much battery.
 - On the hand-built cases, on 30 seeded graphs of at most 4 nodes and battery capacity 8, and on the Detroit–Chicago sample, exact and label-setting agree on feasibility and on `(time, stops, distance)`.
 
-S4 is implemented on `opt/synthetic-tests` and is not on `main` yet. Issue #4 stays open until the pull request merges.
+S4 is implemented in [PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26) and is not on `main` yet. Issue #4 stays open until that pull request merges.
 
 - T1–T14: direct route, one mandatory stop, nearer slow charger, partial charging, infeasible destination, reserve, capacity boundary, fast-charger detour, two stops, stop-then-distance ties, low starting SOC, no extra charge, conservative rounding, and stop counting.
 - A second visit to the same charger is not the unique optimum when that departure is already feasible after the first fill. The two-visit count is checked on an explicit trace. Five steps at one charger stay one stop, and two chargers stay two stops.
