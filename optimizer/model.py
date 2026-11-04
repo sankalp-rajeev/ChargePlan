@@ -10,8 +10,9 @@ Discretization (PRD Section 7.1):
 - edge energy ``c * distance_miles`` rounds up,
 - a plan accepted after that rounding stays at or above the reserve in real kWh.
 
-Label time is an integer number of milliseconds. ``minutes_to_ms`` rounds half
-up at the boundary between the search and ``algorithm_result.json``.
+Label time is an integer number of milliseconds, with 1 minute = 60,000 ms.
+``minutes_to_ms`` rounds half up at the boundary between the search and
+``algorithm_result.json``.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 _CONTRACTS = _ROOT / "contracts"
 _EARTH_RADIUS_MILES = 3958.7613
 _LENGTH_TOLERANCE_MILES = 1e-6
+_MS_PER_MINUTE = 60_000
 
 _GRAPH_SCHEMA = "canonical_graph.schema.json"
 _CONFIG_SCHEMA = "trip_config.schema.json"
@@ -55,6 +57,7 @@ def load_config(path: str | Path) -> dict:
     """Load a ``trip_config.json`` file and validate it against the schema."""
     config = _read_json(path)
     _validate(config, _CONFIG_SCHEMA)
+    discretize(config)
     return config
 
 
@@ -74,6 +77,9 @@ def discretize(config: dict) -> tuple[int, int, int, float]:
 
     ``B'`` and ``b0'`` are floored counts of ``ΔE``. ``r'`` is the ceiled
     count. The fourth value is ``soc_step_kwh`` itself, in kWh.
+
+    Initial SOC and reserve must be at most the battery capacity, both in
+    kWh and after rounding.
     """
     step = _required_number(config, "soc_step_kwh")
     capacity = _required_number(config, "battery_capacity_kwh")
@@ -83,13 +89,19 @@ def discretize(config: dict) -> tuple[int, int, int, float]:
         raise InputError("battery capacity and soc_step_kwh must be positive")
     if initial < 0 or reserve < 0:
         raise InputError("initial energy and reserve must be non-negative")
+    if initial > capacity:
+        raise InputError("initial_soc_kwh exceeds battery_capacity_kwh")
+    if reserve > capacity:
+        raise InputError("reserve_kwh exceeds battery_capacity_kwh")
     step_dec = _decimal(step)
-    return (
-        _count(capacity, step_dec, ROUND_FLOOR),
-        _count(initial, step_dec, ROUND_FLOOR),
-        _count(reserve, step_dec, ROUND_CEILING),
-        float(step),
-    )
+    capacity_steps = _count(capacity, step_dec, ROUND_FLOOR)
+    initial_steps = _count(initial, step_dec, ROUND_FLOOR)
+    reserve_steps = _count(reserve, step_dec, ROUND_CEILING)
+    if initial_steps > capacity_steps:
+        raise InputError("discretized initial SOC exceeds battery capacity")
+    if reserve_steps > capacity_steps:
+        raise InputError("discretized reserve exceeds battery capacity")
+    return capacity_steps, initial_steps, reserve_steps, float(step)
 
 
 def edge_energy_steps(distance_miles: float, config: dict) -> int:
@@ -123,18 +135,24 @@ def charge_step_minutes(delta_e_kwh: float, rate_kw: float) -> float:
 
 
 def minutes_to_ms(minutes: float) -> int:
-    """Convert minutes to integer milliseconds, rounding half up."""
+    """Convert minutes to integer milliseconds, rounding half up.
+
+    One minute is 60,000 milliseconds.
+    """
     if minutes < 0:
         raise InputError("minutes must be non-negative")
-    millis = _decimal(minutes) * Decimal(1000)
+    millis = _decimal(minutes) * Decimal(_MS_PER_MINUTE)
     return int(millis.to_integral_value(ROUND_HALF_UP))
 
 
 def ms_to_minutes(time_ms: int) -> float:
-    """Convert an integer millisecond label back to minutes."""
+    """Convert an integer millisecond label back to minutes.
+
+    One minute is 60,000 milliseconds.
+    """
     if isinstance(time_ms, bool) or not isinstance(time_ms, int) or time_ms < 0:
         raise InputError("time_ms must be a non-negative integer")
-    return float(Decimal(time_ms) / Decimal(1000))
+    return float(Decimal(time_ms) / Decimal(_MS_PER_MINUTE))
 
 
 def write_result(result: dict, path: str | Path) -> None:

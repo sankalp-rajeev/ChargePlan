@@ -86,9 +86,43 @@ def test_zero_distance_uses_no_energy() -> None:
 
 def test_charge_step_and_millisecond_conversion() -> None:
     assert charge_step_minutes(1.0, 150) == pytest.approx(0.4)
-    assert minutes_to_ms(51.3) == 51300
-    assert minutes_to_ms(1.0005) == 1001
-    assert ms_to_minutes(51300) == pytest.approx(51.3)
+    assert minutes_to_ms(1) == 60_000
+    assert minutes_to_ms(51.3) == 3_078_000
+    assert minutes_to_ms(0.000025) == 2
+    assert ms_to_minutes(60_000) == pytest.approx(1)
+    assert ms_to_minutes(3_078_000) == pytest.approx(51.3)
+
+
+def test_initial_soc_and_reserve_cannot_exceed_capacity() -> None:
+    config = _sample_config()
+    config["initial_soc_kwh"] = 70
+    config["reserve_kwh"] = 70
+    assert discretize(config)[:3] == (70, 70, 70)
+
+    config["initial_soc_kwh"] = 70.1
+    with pytest.raises(InputError, match="initial_soc_kwh"):
+        discretize(config)
+
+    config = _sample_config()
+    config["reserve_kwh"] = 70.1
+    with pytest.raises(InputError, match="reserve_kwh"):
+        discretize(config)
+
+    config = _sample_config()
+    config["battery_capacity_kwh"] = 1.2
+    config["initial_soc_kwh"] = 0
+    config["reserve_kwh"] = 1.1
+    with pytest.raises(InputError, match="discretized reserve"):
+        discretize(config)
+
+
+def test_load_config_rejects_soc_above_capacity(tmp_path: Path) -> None:
+    config = _sample_config()
+    config["initial_soc_kwh"] = 80
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config), encoding="utf-8")
+    with pytest.raises(InputError, match="initial_soc_kwh"):
+        load_config(path)
 
 
 def test_rounding_rejects_bad_numbers() -> None:
