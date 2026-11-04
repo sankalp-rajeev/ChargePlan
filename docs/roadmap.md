@@ -12,7 +12,9 @@ S3 is on `main` via [PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/2
 
 S4 is on `main` via [PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26) (`0e96666`). T1–T14 and the exact-solver check are on `main`. T16 is not complete; it still waits on the FRC baseline (H4). Issue #4 stays open until that baseline exists.
 
-S10 is implemented on `opt/astar` in [PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/27) (`246c929`) and is not on `main` yet, so its box stays open. The 100 A* graphs use spread-out coordinates, valid road distances, and a positive heuristic. Pytest on this branch: 80 passed, 2 skipped. Ruff was clean. Remaining step: merge PR #27. Issue #10 stays open until that merge.
+S10 is on `main` via [PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/27) (`519779d`). Issue #10 is closed. A* matches label-setting on the hand cases, the 100 geographic graphs, and the Detroit–Chicago sample.
+
+S5 is the complexity note in `docs/complexity-analysis.md`, in [PR #28](https://github.com/sankalp-rajeev/ChargePlan/pull/28). It is not on `main` yet, so its box stays open. Issue #5 stays open until that pull request merges.
 
 ## Sankalp
 
@@ -24,9 +26,9 @@ Optimizer, exact solver, A*, and the algorithm experiments.
 | - [x] | [S2](https://github.com/sankalp-rajeev/ChargePlan/issues/2) Battery-state label-setting optimizer and route reconstruction, merged in [PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24) (`22c3529`). Lexicographic labels, battery and reserve constraints, stop counting, and result reconstruction. | Nov 12 |
 | - [x] | [S3](https://github.com/sankalp-rajeev/ChargePlan/issues/3) Exact backtracking solver, merged in [PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25) (`38dc994`). Depth-first search chooses a whole charge amount at each visit and does not reuse the label-setting search. | Nov 12 |
 | - [x] | [S4](https://github.com/sankalp-rajeev/ChargePlan/issues/4) Synthetic correctness tests, merged in [PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26) (`0e96666`). T1–T14 and the exact 100-graph check are on `main`. T15 is verified against A* in [PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/27). T16 is not complete; it waits on the FRC baseline (H4). | Nov 12 |
-| - [ ] | [S5](https://github.com/sankalp-rajeev/ChargePlan/issues/5) Complexity analysis for the report. | Nov 17 |
+| - [ ] | [S5](https://github.com/sankalp-rajeev/ChargePlan/issues/5) Complexity analysis in `docs/complexity-analysis.md`, in [PR #28](https://github.com/sankalp-rajeev/ChargePlan/pull/28). Not on `main`. State space, label-setting and A* bounds, discretization, and the exact solver. Issue #5 stays open until the pull request merges. | Nov 17 |
 | - [ ] | [S6](https://github.com/sankalp-rajeev/ChargePlan/issues/6) Experiment runner and metrics collection. | Nov 17 |
-| - [ ] | [S10](https://github.com/sankalp-rajeev/ChargePlan/issues/10) A* variant, in [PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/27). Admissible floored straight-line heuristic. The 100 seeded graphs are spread out, roads cover the straight-line distance, and `h(origin)` is positive. Same label as label-setting, and no more states expanded. T15 is in `test_astar.py` and `test_synthetic.py`. Real-data comparison waits on S9. Tests: 80 passed, 2 skipped. Remaining: merge to `main`. | Nov 17 |
+| - [x] | [S10](https://github.com/sankalp-rajeev/ChargePlan/issues/10) A* variant, merged in [PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/27) (`519779d`). Admissible floored straight-line heuristic. Same lexicographic label as label-setting on the hand cases, 100 geographic graphs, and the Detroit–Chicago sample. | Nov 17 |
 | - [ ] | [S9](https://github.com/sankalp-rajeev/ChargePlan/issues/9) Run the real-data graph through the optimizer and write result files. | Nov 20 |
 | - [ ] | [S7](https://github.com/sankalp-rajeev/ChargePlan/issues/7) Experiments A, C, D, E, and J. | Nov 24 |
 | - [ ] | [S8](https://github.com/sankalp-rajeev/ChargePlan/issues/8) Algorithm sections of the report. | Dec 2 |
