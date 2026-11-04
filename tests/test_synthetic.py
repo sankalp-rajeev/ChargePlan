@@ -21,19 +21,26 @@ import pytest
 from optimizer.battery_state_optimizer import solve as label_solve
 from optimizer.exact_solver import solve as exact_solve
 from optimizer.greedy_baseline import solve as greedy_solve
-from optimizer.model import discretize
+from optimizer.model import discretize, haversine_miles
 from optimizer.reconstruction import reconstruct
 
 ROOT = Path(__file__).resolve().parents[1]
 SYNTHETIC = ROOT / "data" / "synthetic"
+_LENGTH_TOLERANCE_MILES = 1e-6
 
 
-def _node(node_id: str, node_type: str, rate: float | None, lat: float = 42.0) -> dict:
+def _node(
+    node_id: str,
+    node_type: str,
+    rate: float | None,
+    lat: float = 42.0,
+    lon: float = -83.0,
+) -> dict:
     return {
         "id": node_id,
         "type": node_type,
         "lat": lat,
-        "lon": -83.0,
+        "lon": lon,
         "charge_rate_kw": rate,
     }
 
@@ -48,7 +55,36 @@ def _edge(start: str, end: str, miles: float, minutes: float) -> dict:
 
 
 def _graph(*nodes: dict, edges: list[dict]) -> dict:
-    return {"nodes": list(nodes), "edges": edges}
+    graph = {"nodes": list(nodes), "edges": edges}
+    _require_straight_line(graph)
+    return graph
+
+
+def _straight(graph: dict, start: str, end: str) -> float:
+    nodes = {node["id"]: node for node in graph["nodes"]}
+    return haversine_miles(
+        nodes[start]["lat"],
+        nodes[start]["lon"],
+        nodes[end]["lat"],
+        nodes[end]["lon"],
+    )
+
+
+def _require_straight_line(graph: dict) -> None:
+    """Reject a fixture whose road is shorter than the frozen haversine check.
+
+    The tolerance is the same 1e-6 miles used by ``optimizer.model``.
+    """
+    nodes = {node["id"]: node for node in graph["nodes"]}
+    for edge in graph["edges"]:
+        start = nodes[edge["from"]]
+        end = nodes[edge["to"]]
+        straight = haversine_miles(start["lat"], start["lon"], end["lat"], end["lon"])
+        if edge["distance_miles"] + _LENGTH_TOLERANCE_MILES < straight:
+            raise AssertionError(
+                f"edge {edge['from']!r} -> {edge['to']!r} is shorter than the "
+                f"straight-line distance ({edge['distance_miles']} < {straight})"
+            )
 
 
 def _config(**overrides: float | str) -> dict:
@@ -65,12 +101,12 @@ def _config(**overrides: float | str) -> dict:
     return config
 
 
-def _origin(rate: float | None = None, lat: float = 42.0) -> dict:
-    return _node("origin", "origin", rate, lat)
+def _origin(rate: float | None = None, lat: float = 42.0, lon: float = -83.0) -> dict:
+    return _node("origin", "origin", rate, lat, lon)
 
 
-def _destination(lat: float = 42.0) -> dict:
-    return _node("destination", "destination", None, lat)
+def _destination(lat: float = 42.0, lon: float = -83.0) -> dict:
+    return _node("destination", "destination", None, lat, lon)
 
 
 def _objective(result: dict) -> tuple:
@@ -147,11 +183,14 @@ def test_t2_one_mandatory_stop_keeps_the_reserve() -> None:
 
 def test_t3_optimizer_prefers_total_time_over_the_near_slow_charger() -> None:
     """The slow charger sits closer to the destination. Greedy comparison waits on H4."""
+    # Road miles stay 5 / 20 / 12 / 20 so the 44-minute fast route is unchanged.
+    # Slow is north of the origin, toward the destination. Fast is east, a detour
+    # that is farther from the destination than the origin is.
     graph = _graph(
-        _origin(lat=42.0),
-        _node("slow", "charger", 10, lat=42.02),
-        _node("fast", "charger", 60, lat=42.40),
-        _destination(lat=42.05),
+        _origin(lat=42.0, lon=-83.0),
+        _node("slow", "charger", 10, lat=42.03, lon=-83.0),
+        _node("fast", "charger", 60, lat=42.0, lon=-82.85),
+        _destination(lat=42.05, lon=-83.0),
         edges=[
             _edge("origin", "slow", 5, 5),
             _edge("slow", "destination", 20, 20),
@@ -162,6 +201,8 @@ def test_t3_optimizer_prefers_total_time_over_the_near_slow_charger() -> None:
     label, _exact = _agree(graph, _config(initial_soc_kwh=20, battery_capacity_kwh=30))
     assert label["route_node_ids"] == ["origin", "fast", "destination"]
     assert label["total_time_minutes"] == 44
+    assert _straight(graph, "slow", "destination") < _straight(graph, "origin", "destination")
+    assert _straight(graph, "fast", "destination") > _straight(graph, "origin", "destination")
     with pytest.raises(NotImplementedError):
         greedy_solve(graph, _config(initial_soc_kwh=20, battery_capacity_kwh=30))
 
@@ -416,7 +457,7 @@ def test_t16_greedy_failure_case_is_blocked_on_h4() -> None:
         },
         edges=[
             _edge("origin", "destination", 110, 110),
-            _edge("origin", "away", 50, 50),
+            _edge("origin", "away", 52, 50),
             _edge("away", "destination", 160, 160),
         ],
     )
@@ -425,6 +466,7 @@ def test_t16_greedy_failure_case_is_blocked_on_h4() -> None:
     assert label["status"] == "FEASIBLE"
     assert label["route_node_ids"] == ["origin", "away", "destination"]
     assert label["number_of_charging_stops"] == 1
+    assert _straight(graph, "away", "destination") > _straight(graph, "origin", "destination")
     with pytest.raises(NotImplementedError):
         greedy_solve(graph, config)
 
@@ -451,6 +493,15 @@ def test_edge_cases_zero_loop_exact_reserve_and_sample() -> None:
     sample, _sample_exact = _agree(graph, config)
     assert sample["total_time_minutes"] == 322.5
     assert sample["number_of_charging_stops"] == 2
+
+
+def test_synthetic_fixture_rejects_a_road_shorter_than_straight_line() -> None:
+    with pytest.raises(AssertionError, match="straight-line"):
+        _graph(
+            _origin(lat=42.0, lon=-83.0),
+            _destination(lat=43.0, lon=-83.0),
+            edges=[_edge("origin", "destination", 1, 1)],
+        )
 
 
 def test_one_hundred_seeded_graphs_match_the_exact_solver() -> None:

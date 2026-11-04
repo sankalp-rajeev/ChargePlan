@@ -79,7 +79,7 @@ S4 is implemented in [PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/
 - T15 is not complete. `use_heuristic=True` still raises `NotImplementedError` (S10).
 - T16 is not complete. The graph where Section 12 should fail is fixed, and label-setting finds a one-stop plan. `greedy_baseline.solve` still raises `NotImplementedError` (H4).
 
-This branch is Ruff-clean, with pytest at 75 passed and 1 skipped (the greedy baseline placeholder).
+This branch is Ruff-clean, with pytest at 76 passed and 1 skipped (the greedy baseline placeholder).
 
 ## Phase 1 freeze (v0.1)
 
