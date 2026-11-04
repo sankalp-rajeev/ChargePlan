@@ -2,7 +2,7 @@
 
 EV charging-aware route optimizer for CIS 505 (Fall 2026). The search minimizes driving time plus charging time over a battery-expanded state graph. Sankalp Rajeev owns the optimizer and experiments. Shannon owns the data pipeline, the farthest-reachable-charger baseline, and the visualizer.
 
-The shared runtime is on `main` ([PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23), issue #1 closed). Label-setting search is on `main` ([PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24), issue #2 closed). The exact solver is on `main` ([PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25), issue #3 closed). The synthetic suite is on `main` ([PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26), issue #4 still open because T16 waits on H4). A* is on `main` ([PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/27), issue #10 closed). The complexity note is on `docs/complexity-analysis` and is not merged yet. The greedy baseline is still a stub.
+The shared runtime is on `main` ([PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23), issue #1 closed). Label-setting search is on `main` ([PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24), issue #2 closed). The exact solver is on `main` ([PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25), issue #3 closed). The synthetic suite is on `main` ([PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26), issue #4 still open because T16 waits on H4). A* is on `main` ([PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/27), issue #10 closed). The complexity note is in [PR #28](https://github.com/sankalp-rajeev/ChargePlan/pull/28) and is not merged yet. The greedy baseline is still a stub.
 
 Full specification: [docs/PRD.md](docs/PRD.md). Task list: [docs/roadmap.md](docs/roadmap.md).
 
@@ -87,7 +87,7 @@ S10 is on `main` via [PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/
 - The 100 A* graphs are spread over a few miles, every road covers the straight-line distance, and `h(origin)` is positive on all 100. A* matches label-setting and expands no more states. Both expand 127 states and store 148 on the Detroit–Chicago sample. A westward chain expands fewer states.
 - No canonical graph is in `data/processed` yet, so the real-data half of T15 is skipped until S9.
 
-S5 is written in [docs/complexity-analysis.md](docs/complexity-analysis.md) and is not on `main` yet. Issue #5 stays open until that pull request merges.
+S5 is written in [docs/complexity-analysis.md](docs/complexity-analysis.md) on [PR #28](https://github.com/sankalp-rajeev/ChargePlan/pull/28) and is not on `main` yet. Issue #5 stays open until that pull request merges.
 
 - The expanded graph has at most \(2|V|S\) states. Dense label-setting and A* are \(O(|V|^2 S \log(|V|S))\) time. The stale heap makes dense memory \(O(|V|^2 S)\), above the \(O(|V|S)\) label table.
 - Halving the SOC step roughly doubles \(S\) and therefore time and memory. Accepted plans stay feasible in real energy; the discrete optimum can still differ from continuous charging.
