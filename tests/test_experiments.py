@@ -60,7 +60,7 @@ def test_metric_row_rejects_a_result_without_metrics() -> None:
 
 
 def test_runner_writes_measured_rows_and_leaves_the_rest_unavailable(tmp_path: Path) -> None:
-    summary = run(tmp_path, seed=505, tiny_count=2)
+    summary = run(tmp_path, seed=505, tiny_count=2, correctness_count=0, sweeps=False)
     assert summary.disagreements == ()
     assert {path.name for path in tmp_path.iterdir()} == set(OUTPUT_FILES)
 
@@ -106,9 +106,9 @@ def test_same_seed_repeats_every_column_except_runtime(tmp_path: Path) -> None:
     first_dir = tmp_path / "first"
     second_dir = tmp_path / "second"
     other_dir = tmp_path / "other"
-    run(first_dir, seed=505, tiny_count=2)
-    run(second_dir, seed=505, tiny_count=2)
-    run(other_dir, seed=506, tiny_count=2)
+    run(first_dir, seed=505, tiny_count=2, correctness_count=0, sweeps=False)
+    run(second_dir, seed=505, tiny_count=2, correctness_count=0, sweeps=False)
+    run(other_dir, seed=506, tiny_count=2, correctness_count=0, sweeps=False)
     first = _without_runtime(read_csv(first_dir / "correctness.csv"))
     second = _without_runtime(read_csv(second_dir / "correctness.csv"))
     other = _without_runtime(read_csv(other_dir / "correctness.csv"))
@@ -137,7 +137,7 @@ def test_exact_solver_is_not_called_outside_the_bound(
         return real(algorithm, graph, config)
 
     monkeypatch.setattr("experiments.run_all._solve", guarded)
-    summary = run(tmp_path, seed=505, tiny_count=1)
+    summary = run(tmp_path, seed=505, tiny_count=1, correctness_count=0, sweeps=False)
     assert summary.disagreements == ()
     sample = load_sample()
     assert exact_block_reason(sample.graph, sample.config) is not None
@@ -161,7 +161,19 @@ def test_a_label_mismatch_is_written_and_fails_the_run(
         return forged
 
     monkeypatch.setattr("experiments.run_all._solve", mismatched)
-    assert main(["--out", str(tmp_path), "--tiny", "1", "--seed", "505"]) == 1
+    assert main(
+        [
+            "--out",
+            str(tmp_path),
+            "--tiny",
+            "1",
+            "--seed",
+            "505",
+            "--no-sweeps",
+            "--correctness",
+            "0",
+        ]
+    ) == 1
     rows = read_csv(tmp_path / "correctness.csv")
     failed = [
         row
@@ -181,7 +193,20 @@ def test_missing_sample_and_bad_arguments_are_errors(
         "experiments.run_all.load_sample",
         lambda: (_ for _ in ()).throw(InputError("benchmark sample is missing")),
     )
-    assert main(["--out", str(tmp_path / "out"), "--tiny", "1"]) == 1
+    assert (
+        main(
+            [
+                "--out",
+                str(tmp_path / "out"),
+                "--tiny",
+                "1",
+                "--no-sweeps",
+                "--correctness",
+                "0",
+            ]
+        )
+        == 1
+    )
     assert main(["--tiny", "0"]) == 1
     with pytest.raises(InputError, match="H4"):
         solve_named("greedy", {"nodes": [], "edges": []}, {})
