@@ -16,7 +16,9 @@ S10 is on `main` via [PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/
 
 S5 is on `main` via [PR #28](https://github.com/sankalp-rajeev/ChargePlan/pull/28) (`0b7ea74`). Issue #5 is closed. The complexity note is `docs/complexity-analysis.md`.
 
-S6 is the benchmark runner on `experiments/runner` in [PR #29](https://github.com/sankalp-rajeev/ChargePlan/pull/29). It is not on `main` yet, so its box stays open. Label-setting and A* run on the sample and on 20 seeded tiny graphs. Exact search stays inside 8 nodes, 5 chargers, and 8 capacity steps. Greedy and real-data rows are `UNAVAILABLE`. Issue #6 stays open until that pull request merges. Issue #4 stays open until H4.
+S6 is on `main` via [PR #29](https://github.com/sankalp-rajeev/ChargePlan/pull/29) (`0ac0d1e`). Issue #6 is closed. Label-setting and A* run on the sample and on 20 seeded tiny graphs. Exact search stays inside 8 nodes, 5 chargers, and 8 capacity steps. Greedy and real-data rows stay `UNAVAILABLE`. Issue #4 stays open until H4.
+
+S7 is the algorithm sweeps on `experiments/algorithm-sweeps` in [PR #30](https://github.com/sankalp-rajeev/ChargePlan/pull/30). It is not on `main` yet, so its box stays open. Experiments A, C, D, E, and J write measured rows and the six plots that have data. Greedy, density, and real-data rows stay `UNAVAILABLE`. Issue #7 stays open until that pull request merges.
 
 ## Sankalp
 
@@ -29,10 +31,10 @@ Optimizer, exact solver, A*, and the algorithm experiments.
 | - [x] | [S3](https://github.com/sankalp-rajeev/ChargePlan/issues/3) Exact backtracking solver, merged in [PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25) (`38dc994`). Depth-first search chooses a whole charge amount at each visit and does not reuse the label-setting search. | Nov 12 |
 | - [x] | [S4](https://github.com/sankalp-rajeev/ChargePlan/issues/4) Synthetic correctness tests, merged in [PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26) (`0e96666`). T1–T14 and the exact 100-graph check are on `main`. T15 is verified against A* in [PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/27). T16 is not complete; it waits on the FRC baseline (H4). | Nov 12 |
 | - [x] | [S5](https://github.com/sankalp-rajeev/ChargePlan/issues/5) Complexity analysis, merged in [PR #28](https://github.com/sankalp-rajeev/ChargePlan/pull/28) (`0b7ea74`). State space, label-setting and A* bounds, discretization, and the exact solver, checked against the implementations. | Nov 17 |
-| - [ ] | [S6](https://github.com/sankalp-rajeev/ChargePlan/issues/6) Experiment runner in `experiments/run_all.py`, in [PR #29](https://github.com/sankalp-rajeev/ChargePlan/pull/29). Not on `main`. Collects runtime, states, feasibility, time, stops, and distance. Exact search is bounded. Greedy and real-data rows stay `UNAVAILABLE`. | Nov 17 |
+| - [x] | [S6](https://github.com/sankalp-rajeev/ChargePlan/issues/6) Experiment runner, merged in [PR #29](https://github.com/sankalp-rajeev/ChargePlan/pull/29) (`0ac0d1e`). Collects runtime, states, feasibility, time, stops, and distance. Exact search is bounded. Greedy and real-data rows stay `UNAVAILABLE`. | Nov 17 |
 | - [x] | [S10](https://github.com/sankalp-rajeev/ChargePlan/issues/10) A* variant, merged in [PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/27) (`519779d`). Admissible floored straight-line heuristic. Same lexicographic label as label-setting on the hand cases, 100 geographic graphs, and the Detroit–Chicago sample. | Nov 17 |
 | - [ ] | [S9](https://github.com/sankalp-rajeev/ChargePlan/issues/9) Run the real-data graph through the optimizer and write result files. | Nov 20 |
-| - [ ] | [S7](https://github.com/sankalp-rajeev/ChargePlan/issues/7) Experiments A, C, D, E, and J. | Nov 24 |
+| - [ ] | [S7](https://github.com/sankalp-rajeev/ChargePlan/issues/7) Experiments A, C, D, E, and J, in [PR #30](https://github.com/sankalp-rajeev/ChargePlan/pull/30). Not on `main`. Measured SOC, charger, capacity, and A* sweeps. Greedy, density, and real-data rows stay `UNAVAILABLE`. | Nov 24 |
 | - [ ] | [S8](https://github.com/sankalp-rajeev/ChargePlan/issues/8) Algorithm sections of the report. | Dec 2 |
 
 ## Shannon

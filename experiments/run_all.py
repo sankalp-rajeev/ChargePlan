@@ -1,15 +1,13 @@
-"""Run the S6 benchmarks and write Section 23 CSV files under ``results/``.
+"""Run the S6 benchmarks and the S7 sweeps, and write Section 23 CSV files.
 
-``make experiments`` calls ``python -m experiments.run_all``. The run is
-fixed by the seed and the tiny-instance count documented in
-``experiments/README.md``.
+``make experiments`` calls ``python -m experiments.run_all``. Seeds, bounds,
+and the sweeps that are intentionally smaller than the PRD examples are
+documented in ``experiments/README.md``.
 
-Label-setting and A* run on the Detroit–Chicago sample and on every tiny
-graph. The exact solver runs only when ``exact_block_reason`` is ``None``.
-The greedy baseline and the real-data pipeline are not available: their CSV
-files record ``UNAVAILABLE`` and contain no invented measurements. The SOC,
-scaling, and battery sweeps are Experiments C, D, and E (S7) and are recorded
-the same way.
+Label-setting and A* run on the Detroit–Chicago sample, the S6 tiny graphs,
+and Experiments C, D, E, and J. Exact search runs on the S6 tiny graphs and
+on Experiment A, and only inside the S6 bound. The greedy baseline, Experiments
+F through I, and real-data routes stay ``UNAVAILABLE``.
 """
 
 from __future__ import annotations
@@ -20,45 +18,40 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from experiments.instances import (
+    CAPACITIES,
+    CHARGER_COUNTS,
+    CORRECTNESS_COUNT,
     DEFAULT_SEED,
     DEFAULT_TINY,
+    TIMING_REPEATS,
     Instance,
     exact_block_reason,
     load_sample,
     tiny_instances,
 )
 from experiments.metrics import OUTPUT_FILES, metric_row, objective, write_csv
+from experiments.plots import MEASURED_PLOTS, write_plots
+from experiments.sweeps import (
+    experiment_a,
+    experiment_c,
+    experiment_d,
+    experiment_e,
+    journal_rows,
+)
 from optimizer.battery_state_optimizer import solve as label_solve
 from optimizer.exact_solver import solve as exact_solve
 from optimizer.model import InputError
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "results"
+DEFAULT_PLOTS = ROOT / "plots"
 
-_UNAVAILABLE = (
+_PENDING = (
     (
         "greedy_comparison.csv",
         "B",
         "greedy_frc",
         "The FRC baseline is not implemented (H4). Experiment B was not run.",
-    ),
-    (
-        "soc_resolution.csv",
-        "C",
-        "",
-        "The SOC-resolution sweep is Experiment C (S7). This runner does not vary the step.",
-    ),
-    (
-        "charger_scaling.csv",
-        "D",
-        "",
-        "The charger-count sweep is Experiment D (S7). This runner does not grow the graph.",
-    ),
-    (
-        "battery_capacity.csv",
-        "E",
-        "",
-        "The battery-capacity sweep is Experiment E (S7). This runner does not vary capacity.",
     ),
     (
         "initial_soc.csv",
@@ -86,6 +79,28 @@ _UNAVAILABLE = (
     ),
 )
 
+# Used only by ``--no-sweeps``. The default run writes measured rows instead.
+_SWEEP_PLACEHOLDERS = (
+    (
+        "soc_resolution.csv",
+        "C",
+        "",
+        "SOC sweep skipped by --no-sweeps.",
+    ),
+    (
+        "charger_scaling.csv",
+        "D",
+        "",
+        "Charger sweep skipped by --no-sweeps.",
+    ),
+    (
+        "battery_capacity.csv",
+        "E",
+        "",
+        "Capacity sweep skipped by --no-sweeps.",
+    ),
+)
+
 
 @dataclass(frozen=True)
 class RunSummary:
@@ -102,12 +117,28 @@ def main(argv: list[str] | None = None) -> int:
     if args.tiny < 1:
         print("error: --tiny must be positive", file=sys.stderr)
         return 1
+    if args.correctness < 0:
+        print("error: --correctness must be non-negative", file=sys.stderr)
+        return 1
+    if args.repeats < 1:
+        print("error: --repeats must be positive", file=sys.stderr)
+        return 1
     try:
-        summary = run(args.out, seed=args.seed, tiny_count=args.tiny)
+        summary = run(
+            args.out,
+            seed=args.seed,
+            tiny_count=args.tiny,
+            correctness_count=args.correctness,
+            sweeps=not args.no_sweeps,
+            timing_repeats=args.repeats,
+            plots_dir=args.plots,
+        )
     except (InputError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     print(f"wrote {len(OUTPUT_FILES)} CSV files to {args.out}")
+    if not args.no_sweeps:
+        print(f"wrote {len(MEASURED_PLOTS)} plots to {args.plots}")
     if summary.disagreements:
         joined = ", ".join(summary.disagreements)
         print(f"error: label mismatch on {joined}", file=sys.stderr)
@@ -120,6 +151,12 @@ def run(
     *,
     seed: int = DEFAULT_SEED,
     tiny_count: int = DEFAULT_TINY,
+    correctness_count: int = CORRECTNESS_COUNT,
+    sweeps: bool = True,
+    timing_repeats: int = TIMING_REPEATS,
+    plots_dir: Path | None = None,
+    charger_counts: tuple[int, ...] = CHARGER_COUNTS,
+    capacities: tuple[int, ...] = CAPACITIES,
 ) -> RunSummary:
     """Run the available solvers and write every Section 23 CSV."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -143,13 +180,39 @@ def run(
         if not ok:
             disagreements.append(instance.instance_id)
 
+    measured: dict[str, list[dict[str, str]]] = {}
+    if correctness_count:
+        added, failed = experiment_a(seed, correctness_count)
+        correctness.extend(added)
+        disagreements.extend(failed)
+    if sweeps:
+        soc_rows, soc_failed = experiment_c(timing_repeats)
+        scale_rows, scale_failed = experiment_d(timing_repeats, charger_counts)
+        capacity_rows, capacity_failed = experiment_e(timing_repeats, capacities)
+        disagreements.extend(soc_failed)
+        disagreements.extend(scale_failed)
+        disagreements.extend(capacity_failed)
+        measured["soc_resolution.csv"] = soc_rows
+        measured["charger_scaling.csv"] = scale_rows
+        measured["battery_capacity.csv"] = capacity_rows
+        astar_rows.extend(journal_rows(scale_rows, soc_rows))
+    else:
+        for filename, experiment, algorithm, note in _SWEEP_PLACEHOLDERS:
+            measured[filename] = [_unavailable(experiment, algorithm, note, seed)]
+
     write_csv(output_dir / "correctness.csv", correctness)
     write_csv(output_dir / "astar_comparison.csv", astar_rows)
-    for filename, experiment, algorithm, note in _UNAVAILABLE:
+    for filename, rows in measured.items():
+        write_csv(output_dir / filename, rows)
+    for filename, experiment, algorithm, note in _PENDING:
         write_csv(
             output_dir / filename,
             [_unavailable(experiment, algorithm, note, seed)],
         )
+    if sweeps:
+        charts = dict(measured)
+        charts["astar_comparison.csv"] = astar_rows
+        write_plots(charts, DEFAULT_PLOTS if plots_dir is None else plots_dir)
     return RunSummary(sample_pair + correctness, tuple(disagreements))
 
 
@@ -257,14 +320,22 @@ def _retarget(row: dict[str, str]) -> dict[str, str]:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run ChargePlan benchmarks and write results/.")
+    parser.add_argument("--out", type=Path, default=DEFAULT_OUTPUT, help="CSV directory")
+    parser.add_argument("--plots", type=Path, default=DEFAULT_PLOTS, help="PNG directory")
+    parser.add_argument("--seed", type=int, default=DEFAULT_SEED, help="seed for the random graphs")
+    parser.add_argument("--tiny", type=int, default=DEFAULT_TINY, help="S6 tiny-graph count")
     parser.add_argument(
-        "--out",
-        type=Path,
-        default=DEFAULT_OUTPUT,
-        help="directory for the CSV files",
+        "--correctness",
+        type=int,
+        default=CORRECTNESS_COUNT,
+        help="Experiment A graph count; 0 skips that suite",
     )
-    parser.add_argument("--seed", type=int, default=DEFAULT_SEED, help="seed for the tiny graphs")
-    parser.add_argument("--tiny", type=int, default=DEFAULT_TINY, help="number of tiny graphs")
+    parser.add_argument("--repeats", type=int, default=TIMING_REPEATS, help="timing repeats")
+    parser.add_argument(
+        "--no-sweeps",
+        action="store_true",
+        help="skip Experiments C, D, E, and J and leave those CSV files unmeasured",
+    )
     return parser
 
 

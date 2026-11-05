@@ -2,7 +2,7 @@
 
 EV charging-aware route optimizer for CIS 505 (Fall 2026). The search minimizes driving time plus charging time over a battery-expanded state graph. Sankalp Rajeev owns the optimizer and experiments. Shannon owns the data pipeline, the farthest-reachable-charger baseline, and the visualizer.
 
-The shared runtime is on `main` ([PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23), issue #1 closed). Label-setting search is on `main` ([PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24), issue #2 closed). The exact solver is on `main` ([PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25), issue #3 closed). The synthetic suite is on `main` ([PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26), issue #4 still open because T16 waits on H4). A* is on `main` ([PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/27), issue #10 closed). The complexity note is on `main` ([PR #28](https://github.com/sankalp-rajeev/ChargePlan/pull/28), issue #5 closed). The experiment runner is in [PR #29](https://github.com/sankalp-rajeev/ChargePlan/pull/29) and is not merged yet. The greedy baseline is still a stub.
+The shared runtime is on `main` ([PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23), issue #1 closed). Label-setting search is on `main` ([PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24), issue #2 closed). The exact solver is on `main` ([PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25), issue #3 closed). The synthetic suite is on `main` ([PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26), issue #4 still open because T16 waits on H4). A* is on `main` ([PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/27), issue #10 closed). The complexity note is on `main` ([PR #28](https://github.com/sankalp-rajeev/ChargePlan/pull/28), issue #5 closed). The experiment runner is on `main` ([PR #29](https://github.com/sankalp-rajeev/ChargePlan/pull/29), issue #6 closed). Algorithm sweeps A, C, D, E, and J are in [PR #30](https://github.com/sankalp-rajeev/ChargePlan/pull/30) and are not merged yet. The greedy baseline is still a stub.
 
 Full specification: [docs/PRD.md](docs/PRD.md). Task list: [docs/roadmap.md](docs/roadmap.md).
 
@@ -16,7 +16,7 @@ visualizer/         map, SOC chart, comparison; mock_results/ until real output 
 data/synthetic/     schema samples used by the contract tests
 data/raw/           local snapshots (gitignored)
 data/processed/     reduced graphs (gitignored)
-experiments/        benchmark runner (S6); sweeps A, C, D, E, and J are still S7
+experiments/        benchmark runner (S6) and sweeps A, C, D, E, J (S7)
 tests/              contract, exact, synthetic T1–T16, and A* agreement tests
 results/            experiment CSVs (gitignored)
 plots/              experiment figures (gitignored)
@@ -93,14 +93,23 @@ S5 is on `main` via [PR #28](https://github.com/sankalp-rajeev/ChargePlan/pull/2
 - Halving the SOC step roughly doubles \(S\) and therefore time and memory. Accepted plans stay feasible in real energy; the discrete optimum can still differ from continuous charging.
 - The exact solver branches on up to \(S\) charge amounts per charger visit. Dominance stores \(O(|V|S)\) records and leaves the tree exponential, so it stays a tiny-instance check.
 
-S6 is the benchmark runner in `experiments/run_all.py` on [PR #29](https://github.com/sankalp-rajeev/ChargePlan/pull/29). It is not on `main` yet, so its box stays open. Issue #6 stays open until that pull request merges.
+S6 is on `main` via [PR #29](https://github.com/sankalp-rajeev/ChargePlan/pull/29) (`0ac0d1e`). Issue #6 is closed.
 
 - `make experiments` writes the Section 23 CSV files. Label-setting and A* run on the Detroit–Chicago sample and on 20 tiny graphs from `random.Random(505)`.
 - Exact search runs only at or below 8 nodes, 5 chargers, and 8 capacity steps. The sample is skipped at 70 steps.
-- Greedy, the SOC and scaling sweeps, and real-data routes are `UNAVAILABLE` rows. No measurements are invented for H4, H9, S7, or S9.
-- Inputs and bounds are documented in `experiments/README.md`.
+- Greedy and real-data rows stay `UNAVAILABLE`.
 
-This branch is Ruff-clean, with pytest at 88 passed and 2 skipped (the greedy baseline and the missing real-data graph).
+S7 is the algorithm sweeps in [PR #30](https://github.com/sankalp-rajeev/ChargePlan/pull/30). It is not on `main` yet. Issue #7 stays open until that pull request merges. Issue #4 stays open until H4.
+
+- Experiment A adds 100 exact-legal graphs. Label-setting, A*, and exact search agree on feasibility and the lexicographic label.
+- Experiment C changes only the SOC step. The 0.1 kWh sample is the reference. A separate 10 kWh edge is feasible at 0.1 kWh and infeasible at 6 kWh.
+- Experiment D keeps one corridor and uses 10, 25, 50, and 100 of 100 fixed stations. 200 stations are refused. Fewer stations also means longer hops.
+- Experiment E changes only battery capacity on the sample roads. Initial SOC stays 30 kWh. 40 kWh is infeasible.
+- Experiment J copies those measured rows. A* expands fewer states on the corridor and the same number on the four-node sample.
+- Greedy, charger density, initial SOC, charger speed, and real routes stay `UNAVAILABLE`. Their two plots are not written.
+- Inputs, the hop-length confound, and the commands are in `experiments/README.md`.
+
+This branch is Ruff-clean, with pytest at 94 passed and 2 skipped (the greedy baseline and the missing real-data graph).
 
 ## Phase 1 freeze (v0.1)
 
