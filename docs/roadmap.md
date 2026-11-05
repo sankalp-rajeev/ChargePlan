@@ -18,7 +18,7 @@ S5 is on `main` via [PR #28](https://github.com/sankalp-rajeev/ChargePlan/pull/2
 
 S6 is on `main` via [PR #29](https://github.com/sankalp-rajeev/ChargePlan/pull/29) (`0ac0d1e`). Issue #6 is closed. Label-setting and A* run on the sample and on 20 seeded tiny graphs. Exact search stays inside 8 nodes, 5 chargers, and 8 capacity steps. Greedy and real-data rows stay `UNAVAILABLE`. Issue #4 stays open until H4.
 
-S7 is the algorithm sweeps on `experiments/algorithm-sweeps`. It is not on `main` yet, so its box stays open. Experiments A, C, D, E, and J write measured rows and the six plots that have data. Greedy, density, and real-data rows stay `UNAVAILABLE`. Issue #7 stays open until that pull request merges.
+S7 is the algorithm sweeps on `experiments/algorithm-sweeps` in [PR #30](https://github.com/sankalp-rajeev/ChargePlan/pull/30). It is not on `main` yet, so its box stays open. Experiments A, C, D, E, and J write measured rows and the six plots that have data. Greedy, density, and real-data rows stay `UNAVAILABLE`. Issue #7 stays open until that pull request merges.
 
 ## Sankalp
 
@@ -34,7 +34,7 @@ Optimizer, exact solver, A*, and the algorithm experiments.
 | - [x] | [S6](https://github.com/sankalp-rajeev/ChargePlan/issues/6) Experiment runner, merged in [PR #29](https://github.com/sankalp-rajeev/ChargePlan/pull/29) (`0ac0d1e`). Collects runtime, states, feasibility, time, stops, and distance. Exact search is bounded. Greedy and real-data rows stay `UNAVAILABLE`. | Nov 17 |
 | - [x] | [S10](https://github.com/sankalp-rajeev/ChargePlan/issues/10) A* variant, merged in [PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/27) (`519779d`). Admissible floored straight-line heuristic. Same lexicographic label as label-setting on the hand cases, 100 geographic graphs, and the Detroit–Chicago sample. | Nov 17 |
 | - [ ] | [S9](https://github.com/sankalp-rajeev/ChargePlan/issues/9) Run the real-data graph through the optimizer and write result files. | Nov 20 |
-| - [ ] | [S7](https://github.com/sankalp-rajeev/ChargePlan/issues/7) Experiments A, C, D, E, and J on `experiments/algorithm-sweeps`. Not on `main`. Measured SOC, charger, capacity, and A* sweeps. Greedy, density, and real-data rows stay `UNAVAILABLE`. | Nov 24 |
+| - [ ] | [S7](https://github.com/sankalp-rajeev/ChargePlan/issues/7) Experiments A, C, D, E, and J, in [PR #30](https://github.com/sankalp-rajeev/ChargePlan/pull/30). Not on `main`. Measured SOC, charger, capacity, and A* sweeps. Greedy, density, and real-data rows stay `UNAVAILABLE`. | Nov 24 |
 | - [ ] | [S8](https://github.com/sankalp-rajeev/ChargePlan/issues/8) Algorithm sections of the report. | Dec 2 |
 
 ## Shannon

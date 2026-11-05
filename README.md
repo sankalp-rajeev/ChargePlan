@@ -2,7 +2,7 @@
 
 EV charging-aware route optimizer for CIS 505 (Fall 2026). The search minimizes driving time plus charging time over a battery-expanded state graph. Sankalp Rajeev owns the optimizer and experiments. Shannon owns the data pipeline, the farthest-reachable-charger baseline, and the visualizer.
 
-The shared runtime is on `main` ([PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23), issue #1 closed). Label-setting search is on `main` ([PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24), issue #2 closed). The exact solver is on `main` ([PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25), issue #3 closed). The synthetic suite is on `main` ([PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26), issue #4 still open because T16 waits on H4). A* is on `main` ([PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/27), issue #10 closed). The complexity note is on `main` ([PR #28](https://github.com/sankalp-rajeev/ChargePlan/pull/28), issue #5 closed). The experiment runner is on `main` ([PR #29](https://github.com/sankalp-rajeev/ChargePlan/pull/29), issue #6 closed). Algorithm sweeps A, C, D, E, and J are on `experiments/algorithm-sweeps` and are not merged yet. The greedy baseline is still a stub.
+The shared runtime is on `main` ([PR #23](https://github.com/sankalp-rajeev/ChargePlan/pull/23), issue #1 closed). Label-setting search is on `main` ([PR #24](https://github.com/sankalp-rajeev/ChargePlan/pull/24), issue #2 closed). The exact solver is on `main` ([PR #25](https://github.com/sankalp-rajeev/ChargePlan/pull/25), issue #3 closed). The synthetic suite is on `main` ([PR #26](https://github.com/sankalp-rajeev/ChargePlan/pull/26), issue #4 still open because T16 waits on H4). A* is on `main` ([PR #27](https://github.com/sankalp-rajeev/ChargePlan/pull/27), issue #10 closed). The complexity note is on `main` ([PR #28](https://github.com/sankalp-rajeev/ChargePlan/pull/28), issue #5 closed). The experiment runner is on `main` ([PR #29](https://github.com/sankalp-rajeev/ChargePlan/pull/29), issue #6 closed). Algorithm sweeps A, C, D, E, and J are in [PR #30](https://github.com/sankalp-rajeev/ChargePlan/pull/30) and are not merged yet. The greedy baseline is still a stub.
 
 Full specification: [docs/PRD.md](docs/PRD.md). Task list: [docs/roadmap.md](docs/roadmap.md).
 
@@ -99,7 +99,7 @@ S6 is on `main` via [PR #29](https://github.com/sankalp-rajeev/ChargePlan/pull/2
 - Exact search runs only at or below 8 nodes, 5 chargers, and 8 capacity steps. The sample is skipped at 70 steps.
 - Greedy and real-data rows stay `UNAVAILABLE`.
 
-S7 is the algorithm sweeps on `experiments/algorithm-sweeps`. It is not on `main` yet. Issue #7 stays open until that pull request merges. Issue #4 stays open until H4.
+S7 is the algorithm sweeps in [PR #30](https://github.com/sankalp-rajeev/ChargePlan/pull/30). It is not on `main` yet. Issue #7 stays open until that pull request merges. Issue #4 stays open until H4.
 
 - Experiment A adds 100 exact-legal graphs. Label-setting, A*, and exact search agree on feasibility and the lexicographic label.
 - Experiment C changes only the SOC step. The 0.1 kWh sample is the reference. A separate 10 kWh edge is feasible at 0.1 kWh and infeasible at 6 kWh.
