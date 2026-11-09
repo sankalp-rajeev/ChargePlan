@@ -58,3 +58,23 @@ metrics = road_metrics(origin, destination, cache_dir=".osm_cache")
 `road_metrics` prefers a cache hit, then OSMnx when installed (`pip install osmnx`),
 otherwise a haversine × 1.25 estimate at 55 mph. Edges longer than
 `100 kWh / 0.30 kWh/mi` are dropped by `filter_edges_by_battery` (Experiment E max).
+
+## H3 — export `canonical_graph.json`
+
+```python
+from data_pipeline import build_canonical_graph, export_graph
+
+graph = build_canonical_graph(
+    origin,
+    destination,
+    stations,
+    cache_dir=".osm_cache",
+    max_chargers=25,          # evenly subsample the corridor
+    neighbor_count=3,         # forward edges to the next 3 nodes
+    road_backend="haversine", # or "osmnx" / "auto"
+)
+export_graph(graph["nodes"], graph["edges"], "data/processed/canonical_graph.json")
+```
+
+`export_graph` validates the frozen schema and the shared `load_graph` structural
+rules (unique ids, known endpoints, road distance ≥ straight-line) before writing.

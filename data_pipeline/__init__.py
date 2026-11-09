@@ -5,6 +5,12 @@ does not import the optimizer search.
 """
 
 from data_pipeline.chargers import FALLBACK_RATES_KW, load_stations
+from data_pipeline.export_graph import (
+    build_canonical_graph,
+    build_edges,
+    build_nodes,
+    export_graph,
+)
 from data_pipeline.reduce_graph import (
     DEFAULT_CORRIDOR_WIDTH_MILES,
     filter_edges_by_battery,
@@ -15,6 +21,10 @@ from data_pipeline.road_graph import road_metrics
 __all__ = [
     "DEFAULT_CORRIDOR_WIDTH_MILES",
     "FALLBACK_RATES_KW",
+    "build_canonical_graph",
+    "build_edges",
+    "build_nodes",
+    "export_graph",
     "filter_edges_by_battery",
     "load_stations",
     "road_metrics",
