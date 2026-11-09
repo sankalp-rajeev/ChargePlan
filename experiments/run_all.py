@@ -40,6 +40,7 @@ from experiments.sweeps import (
 )
 from optimizer.battery_state_optimizer import solve as label_solve
 from optimizer.exact_solver import solve as exact_solve
+from optimizer.greedy_baseline import solve as greedy_solve
 from optimizer.model import InputError
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,7 +52,7 @@ _PENDING = (
         "greedy_comparison.csv",
         "B",
         "greedy_frc",
-        "The FRC baseline is not implemented (H4). Experiment B was not run.",
+        "Experiment B (optimizer vs FRC) is owned by H9 and was not run.",
     ),
     (
         "initial_soc.csv",
@@ -263,7 +264,7 @@ def _solve(algorithm: str, graph: dict, config: dict) -> dict:
     if algorithm == "exact":
         return exact_solve(graph, config)
     if algorithm == "greedy":
-        raise InputError("the FRC baseline is not implemented (H4)")
+        return greedy_solve(graph, config)
     raise InputError(f"unknown algorithm {algorithm!r}")
 
 
