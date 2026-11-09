@@ -31,7 +31,7 @@ HAVERSINE_DISTANCE_FACTOR = 1.25
 DEFAULT_SPEED_MPH = 55.0
 
 # Degrees of padding around an OD bbox when downloading an OSM drive graph.
-_OSM_BBOX_PAD_DEG = 0.2
+OSM_BBOX_PAD_DEG = 0.2
 
 
 def road_metrics(
@@ -138,10 +138,10 @@ def osmnx_metrics(
             "backend": "osmnx",
         }
 
-    north = max(origin_lat, dest_lat) + _OSM_BBOX_PAD_DEG
-    south = min(origin_lat, dest_lat) - _OSM_BBOX_PAD_DEG
-    east = max(origin_lon, dest_lon) + _OSM_BBOX_PAD_DEG
-    west = min(origin_lon, dest_lon) - _OSM_BBOX_PAD_DEG
+    north = max(origin_lat, dest_lat) + OSM_BBOX_PAD_DEG
+    south = min(origin_lat, dest_lat) - OSM_BBOX_PAD_DEG
+    east = max(origin_lon, dest_lon) + OSM_BBOX_PAD_DEG
+    west = min(origin_lon, dest_lon) - OSM_BBOX_PAD_DEG
 
     graph = graph_from_bbox(ox, north=north, south=south, east=east, west=west)
     graph = ox.add_edge_speeds(graph)

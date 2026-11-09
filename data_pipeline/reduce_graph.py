@@ -45,13 +45,13 @@ def select_candidates(
     if corridor_width_miles < 0:
         raise ValueError("corridor_width_miles must be non-negative")
 
-    origin_lat, origin_lon = require_lat_lon(origin, "origin")
-    dest_lat, dest_lon = require_lat_lon(destination, "destination")
+    origin_lat, origin_lon = require_LAT_LON(origin, "origin")
+    dest_lat, dest_lon = require_LAT_LON(destination, "destination")
 
     selected: list[dict] = []
     seen_ids: set[str] = set()
     for station in stations:
-        station_lat, station_lon = require_lat_lon(station, "station")
+        station_lat, station_lon = require_LAT_LON(station, "station")
         if not inside_corridor(
             station_lat,
             station_lon,
@@ -172,7 +172,7 @@ def point_to_segment(
     return math.hypot(px - proj_x, py - proj_y), along
 
 
-def require_lat_lon(point: dict[str, Any], label: str) -> tuple[float, float]:
+def require_LAT_LON(point: dict[str, Any], label: str) -> tuple[float, float]:
     try:
         lat = float(point["lat"])
         lon = float(point["lon"])
