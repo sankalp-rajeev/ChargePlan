@@ -5,5 +5,18 @@ does not import the optimizer search.
 """
 
 from data_pipeline.chargers import FALLBACK_RATES_KW, load_stations
+from data_pipeline.reduce_graph import (
+    DEFAULT_CORRIDOR_WIDTH_MILES,
+    filter_edges_by_battery,
+    select_candidates,
+)
+from data_pipeline.road_graph import road_metrics
 
-__all__ = ["FALLBACK_RATES_KW", "load_stations"]
+__all__ = [
+    "DEFAULT_CORRIDOR_WIDTH_MILES",
+    "FALLBACK_RATES_KW",
+    "filter_edges_by_battery",
+    "load_stations",
+    "road_metrics",
+    "select_candidates",
+]

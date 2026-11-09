@@ -40,3 +40,21 @@ When the snapshot has no usable kW value, `load_stations` assigns:
 
 Stations that used a fallback set `used_fallback_rate` to `true`. Experiment H
 can sweep these constants later.
+
+## H2 — corridor and road metrics
+
+```python
+from data_pipeline import load_stations, select_candidates, road_metrics
+
+stations = load_stations("data/raw/afdc_ev_midwest_2026-11-09.json")
+origin = {"lat": 42.3314, "lon": -83.0458}       # Detroit
+destination = {"lat": 41.8781, "lon": -87.6298}  # Chicago
+candidates = select_candidates(stations, origin, destination)  # 40 mi corridor
+
+metrics = road_metrics(origin, destination, cache_dir=".osm_cache")
+# metrics["distance_miles"], metrics["drive_time_minutes"]
+```
+
+`road_metrics` prefers a cache hit, then OSMnx when installed (`pip install osmnx`),
+otherwise a haversine × 1.25 estimate at 55 mph. Edges longer than
+`100 kWh / 0.30 kWh/mi` are dropped by `filter_edges_by_battery` (Experiment E max).
