@@ -43,4 +43,4 @@ results/**
 plots/**
 !plots/.gitkeep
 *.csv
-!tests/fixtures/*/.csv
+!tests/fixtures/**/*.csv
