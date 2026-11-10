@@ -3,16 +3,26 @@
 Each sweep changes one input. Exact search is used only by Experiment A, and
 only on graphs that already satisfy the S6 bound. Timing rows store the median
 of repeated solves. States must match across those repeats; if they do not,
-the run stops instead of publishing a mixed measurement.
+the run stops instead of publishing a mixed measurement. Experiment J has its
+own instances (``experiments.astar_suite``). It crosses four factors and does
+not reuse the rows of any other experiment.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
+from dataclasses import dataclass
 
+from experiments.astar_suite import SUITE_REPLICATES, build_astar_suite
+from experiments.astar_summary import SUITE_NOTE, reduction_pct, summarize_astar
+from experiments.correctness import ALGORITHMS, compare, failed_ids, summarize
 from experiments.instances import (
     CAPACITIES,
     CHARGER_COUNTS,
+    DEFAULT_SEED,
+    SCALING_REPLICATES,
     SOC_ROUNDUP_STEPS,
     SOC_SAMPLE_STEPS,
     TIMING_REPEATS,
@@ -30,16 +40,44 @@ from optimizer.exact_solver import solve as exact_solve
 from optimizer.model import InputError
 
 
+@dataclass(frozen=True)
+class ExperimentA:
+    """CSV rows, failing instance ids, and the supplementary summary for Experiment A."""
+
+    rows: list[dict[str, str]]
+    failed: tuple[str, ...]
+    records: list[dict]
+    summary: dict
+
+
 def experiment_a(seed: int, count: int) -> tuple[list[dict[str, str]], tuple[str, ...]]:
-    """Compare label-setting, A*, and exact on ``count`` tiny graphs."""
+    """Compare label-setting, A*, and exact on ``count`` generated graphs."""
+    report = experiment_a_report(seed, count)
+    return report.rows, report.failed
+
+
+def experiment_a_report(seed: int, count: int) -> ExperimentA:
+    """Run Experiment A and keep the per-instance comparison records.
+
+    A mismatch between any two solvers, or between the exact solver and the
+    energy-only certificate, puts the instance id in ``failed``. Nothing is
+    skipped: every instance is compared on feasibility and the full
+    ``(time, stops, distance)`` label.
+    """
     rows: list[dict[str, str]] = []
-    failed: list[str] = []
+    records: list[dict] = []
     for instance in correctness_instances(seed, count):
-        measured, ok = _triple(instance, "A")
-        rows.extend(measured)
-        if not ok:
-            failed.append(instance.instance_id)
-    return rows, tuple(failed)
+        results = {name: _solve(name, instance) for name in ALGORITHMS}
+        record = compare(instance, results)
+        ok = not record["mismatches"] and not record["certificate_conflict"]
+        rows.extend(_a_rows(instance, results, ok))
+        records.append(record)
+    return ExperimentA(
+        rows=rows,
+        failed=failed_ids(records),
+        records=records,
+        summary=summarize(seed, records),
+    )
 
 
 def experiment_c(repeats: int = TIMING_REPEATS) -> tuple[list[dict[str, str]], tuple[str, ...]]:
@@ -65,12 +103,27 @@ def experiment_c(repeats: int = TIMING_REPEATS) -> tuple[list[dict[str, str]], t
 def experiment_d(
     repeats: int = TIMING_REPEATS,
     counts: tuple[int, ...] = CHARGER_COUNTS,
+    *,
+    seed: int = DEFAULT_SEED,
+    replicates: int = SCALING_REPLICATES,
 ) -> tuple[list[dict[str, str]], tuple[str, ...]]:
-    """Sweep the number of candidate chargers on one fixed corridor."""
+    """Sweep the candidate-charger count over matched subsets of seeded pools.
+
+    Every replicate is one pool, and each count is a prefix of it. Label-setting
+    and A* run on the same instance, so they see the same graph and config.
+    ``min_stops`` is the energy-only certificate, a lower bound on the stops any
+    route needs. ``summarize_scaling`` aggregates these rows per count.
+    """
     rows: list[dict[str, str]] = []
     failed: list[str] = []
-    for instance in scaling_instances(counts):
-        pair, ok = _pair(instance, "D", repeats, note="corridor=fixed; hop=3")
+    for instance in scaling_instances(counts, seed=seed, replicates=replicates):
+        note = (
+            f"replicate={instance.meta['replicate']}; edges={instance.meta['edges']}; "
+            f"capacity_steps={instance.meta['capacity_steps']}; "
+            f"fast_share={instance.meta['fast_share']}; "
+            f"min_stops={_stops(instance.meta['min_stops'])}"
+        )
+        pair, ok = _pair(instance, "D", repeats, note=note)
         rows.extend(pair)
         if not ok:
             failed.append(instance.instance_id)
@@ -92,41 +145,94 @@ def experiment_e(
     return rows, tuple(failed)
 
 
-def journal_rows(
-    scaling: list[dict[str, str]],
-    soc: list[dict[str, str]],
-) -> list[dict[str, str]]:
-    """Copy the measured scaling and SOC rows into Experiment J.
+@dataclass(frozen=True)
+class ExperimentJ:
+    """CSV rows, failing instance ids, reproduction records, and the summary for Experiment J."""
 
-    Real-data routes are not added. S9 has not produced one.
+    rows: list[dict[str, str]]
+    failed: tuple[str, ...]
+    failures: list[dict]
+    summary: dict
+
+
+def experiment_j(
+    repeats: int = TIMING_REPEATS,
+    *,
+    seed: int = DEFAULT_SEED,
+    replicates: int = SUITE_REPLICATES,
+) -> tuple[list[dict[str, str]], tuple[str, ...]]:
+    """Run the dedicated A* benchmark. Return its rows and the ids that disagreed."""
+    report = experiment_j_report(repeats, seed=seed, replicates=replicates)
+    return report.rows, report.failed
+
+
+def experiment_j_report(
+    repeats: int = TIMING_REPEATS,
+    *,
+    seed: int = DEFAULT_SEED,
+    replicates: int = SUITE_REPLICATES,
+    instances: list[Instance] | None = None,
+) -> ExperimentJ:
+    """Compare A* with label-setting on the instances built by ``astar_suite``.
+
+    Both algorithms get the same graph and config objects, and their runs are
+    interleaved so neither always runs on a colder or warmer interpreter. The
+    two results must agree on status, time, stops, and distance. A pair that
+    does not agree is written with ``agreement=false``, listed in ``failed``, and
+    described in ``failures`` with the graph and config needed to reproduce it.
+    Nothing is dropped. A* expanding more states than label-setting is recorded
+    as a negative reduction. It is not an error.
+
+    ``instances`` replaces the default benchmark for tests.
     """
-    copied = []
-    for row in scaling + soc:
-        if row["algorithm"] not in {"label_setting", "astar"}:
-            continue
-        if row["status"] not in {"FEASIBLE", "INFEASIBLE"}:
-            continue
-        updated = dict(row)
-        updated["experiment"] = "J"
-        note = updated["note"]
-        suffix = "comparison=J"
-        updated["note"] = f"{note}; {suffix}" if note else suffix
-        copied.append(updated)
-    return copied
+    suite = build_astar_suite(seed, replicates) if instances is None else instances
+    rows: list[dict[str, str]] = []
+    failed: list[str] = []
+    failures: list[dict] = []
+    for instance in suite:
+        before = _fingerprint(instance)
+        plain, guided = _timed_pair(instance, repeats)
+        if _fingerprint(instance) != before:
+            raise InputError(f"{instance.instance_id}: a solver changed its input")
+        ok = objective(plain) == objective(guided)
+        agreement = "true" if ok else "false"
+        reduction = reduction_pct(
+            plain["metrics"]["states_expanded"], guided["metrics"]["states_expanded"]
+        )
+        meta = instance.meta
+        note = (
+            f"{SUITE_NOTE}; geometry={meta['geometry']}; size={meta['size']}; "
+            f"speed={meta['speed']}; soc_step={format(meta['soc_step'], 'g')}; "
+            f"replicate={meta['replicate']}; edges={meta['edges']}; "
+            f"capacity_steps={meta['capacity_steps']}; straight_miles={meta['straight_miles']}; "
+            f"h_origin_minutes={meta['h_origin_minutes']}; "
+            f"min_stops={_stops(meta['min_stops'])}"
+        )
+        timing = f"timing=median of {repeats}" if repeats > 1 else "timing=single run"
+        guided_note = (
+            f"{note}; {timing}; states_reduction_pct="
+            f"{'' if reduction is None else format(reduction, '.10g')}"
+        )
+        rows.append(_row(instance, "J", plain, agreement, f"{note}; {timing}"))
+        rows.append(_row(instance, "J", guided, agreement, guided_note))
+        if not ok:
+            failed.append(instance.instance_id)
+            failures.append(_failure(instance, plain, guided, seed))
+    return ExperimentJ(
+        rows=rows,
+        failed=tuple(failed),
+        failures=failures,
+        summary=summarize_astar(rows),
+    )
 
 
-def _triple(instance: Instance, experiment: str) -> tuple[list[dict[str, str]], bool]:
-    plain = _solve("label_setting", instance)
-    guided = _solve("astar", instance)
-    exact = _solve("exact", instance)
-    ok = objective(plain) == objective(guided) == objective(exact)
+def _a_rows(instance: Instance, results: dict[str, dict], ok: bool) -> list[dict[str, str]]:
     agreement = "true" if ok else "false"
     note = "suite=A; timing=single run"
-    return [
-        _row(instance, experiment, plain, agreement, note),
-        _row(instance, experiment, guided, agreement, note),
-        _row(instance, experiment, exact, agreement, note),
-    ], ok
+    category = instance.meta.get("category")
+    if category:
+        note = f"{note}; category={category}; variant={instance.meta.get('variant', '')}"
+    return [_row(instance, "A", results[name], agreement, note) for name in ALGORITHMS]
 
 
 def _pair(
@@ -148,10 +254,69 @@ def _pair(
     ], ok
 
 
+def _timed_pair(instance: Instance, repeats: int) -> tuple[dict, dict]:
+    """Time label-setting and A* with the repeats interleaved, alternating who goes first."""
+    if repeats < 1:
+        raise InputError("timing repeats must be positive")
+    plain_runs: list[dict] = []
+    guided_runs: list[dict] = []
+    for index in range(repeats):
+        if index % 2 == 0:
+            plain_runs.append(_solve("label_setting", instance))
+            guided_runs.append(_solve("astar", instance))
+        else:
+            guided_runs.append(_solve("astar", instance))
+            plain_runs.append(_solve("label_setting", instance))
+    return (
+        _collapse("label_setting", instance, plain_runs),
+        _collapse("astar", instance, guided_runs),
+    )
+
+
+def _fingerprint(instance: Instance) -> str:
+    payload = json.dumps([instance.graph, instance.config], sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _failure(instance: Instance, plain: dict, guided: dict, seed: int) -> dict:
+    """Everything needed to reproduce a label disagreement."""
+    return {
+        "instance_id": instance.instance_id,
+        "seed": seed,
+        "factors": {
+            key: instance.meta.get(key)
+            for key in ("geometry", "size", "speed", "soc_step", "replicate")
+        },
+        "label_setting": _label(plain),
+        "astar": _label(guided),
+        "config": instance.config,
+        "graph": instance.graph,
+    }
+
+
+def _label(result: dict) -> dict:
+    return {
+        "status": result["status"],
+        "total_time_minutes": result["total_time_minutes"],
+        "number_of_charging_stops": result["number_of_charging_stops"],
+        "total_distance_miles": result["total_distance_miles"],
+        "states_expanded": result["metrics"]["states_expanded"],
+    }
+
+
+def _stops(minimum: int | None) -> str:
+    """The certificate minimum, or ``none`` when no energy-feasible chain exists."""
+    return "none" if minimum is None else str(minimum)
+
+
 def _timed(algorithm: str, instance: Instance, repeats: int) -> dict:
     if repeats < 1:
         raise InputError("timing repeats must be positive")
-    results = [_solve(algorithm, instance) for _ in range(repeats)]
+    return _collapse(algorithm, instance, [_solve(algorithm, instance) for _ in range(repeats)])
+
+
+def _collapse(algorithm: str, instance: Instance, results: list[dict]) -> dict:
+    """Check that repeated solves agree, then keep one result with the median runtime."""
     first = objective(results[0])
     states = results[0]["metrics"]["states_expanded"]
     stored = results[0]["metrics"]["peak_states_stored"]
