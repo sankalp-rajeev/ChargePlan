@@ -78,3 +78,23 @@ export_graph(graph["nodes"], graph["edges"], "data/processed/canonical_graph.jso
 
 `export_graph` validates the frozen schema and the shared `load_graph` structural
 rules (unique ids, known endpoints, road distance ≥ straight-line) before writing.
+
+## H5 — real-data trip scenarios
+
+```bash
+python -m data_pipeline \
+  --snapshot data/raw/afdc_ev_midwest_2026-11-09.json \
+  --out data/processed \
+  --backend haversine
+```
+
+Each scenario directory contains `canonical_graph.json`, `trip_config.json`, and
+`scenario_meta.json`:
+
+| Scenario id | Category |
+| --- | --- |
+| `no_charge_detroit_ann_arbor` | no-charge |
+| `one_stop_detroit_cleveland` | one-stop |
+| `multi_stop_detroit_chicago` | multi-stop |
+| `mixed_speeds_detroit_chicago` | mixed charger speeds |
+| `sparse_detroit_chicago` | sparse chargers |

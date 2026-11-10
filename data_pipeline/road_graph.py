@@ -123,12 +123,17 @@ def osmnx_metrics(
     dest_lat: float,
     dest_lon: float,
 ) -> dict[str, Any]:
-    """Shortest-time drive path via OSMnx. Raises if routing is unavailable."""
+    """Shortest-time drive path via OSMnx. Raises if routing is unavailable.
+
+    Short hops download a point-centered drive extract (more reliable against
+    public Overpass). Longer corridors use a padded bbox.
+    """
     try:
         import osmnx as ox
     except ImportError as exc:
         raise RuntimeError(
-            "osmnx is not installed; pip install osmnx or use backend='haversine'"
+            "osmnx is not installed; pip install 'chargeplan[roads]' "
+            "or use backend='haversine'"
         ) from exc
 
     if math.isclose(origin_lat, dest_lat) and math.isclose(origin_lon, dest_lon):
@@ -138,12 +143,7 @@ def osmnx_metrics(
             "backend": "osmnx",
         }
 
-    north = max(origin_lat, dest_lat) + OSM_BBOX_PAD_DEG
-    south = min(origin_lat, dest_lat) - OSM_BBOX_PAD_DEG
-    east = max(origin_lon, dest_lon) + OSM_BBOX_PAD_DEG
-    west = min(origin_lon, dest_lon) - OSM_BBOX_PAD_DEG
-
-    graph = graph_from_bbox(ox, north=north, south=south, east=east, west=west)
+    graph = _osm_drive_graph(ox, origin_lat, origin_lon, dest_lat, dest_lon)
     graph = ox.add_edge_speeds(graph)
     graph = ox.add_edge_travel_times(graph)
 
@@ -172,6 +172,37 @@ def osmnx_metrics(
         "drive_time_minutes": drive_time_minutes,
         "backend": "osmnx",
     }
+
+
+def _osm_drive_graph(
+    ox: Any,
+    origin_lat: float,
+    origin_lon: float,
+    dest_lat: float,
+    dest_lon: float,
+):
+    """Download the OSM drive network covering both endpoints."""
+    straight_miles = haversine_miles(origin_lat, origin_lon, dest_lat, dest_lon)
+    # Point extracts stay smaller and succeed more often on public Overpass.
+    if straight_miles <= 30.0:
+        mid_lat = (origin_lat + dest_lat) / 2.0
+        mid_lon = (origin_lon + dest_lon) / 2.0
+        half_m = (straight_miles * 1609.344) / 2.0
+        dist_m = max(half_m + 1500.0, 2000.0)
+        graph_mod = getattr(ox, "graph", None)
+        if graph_mod is not None and hasattr(graph_mod, "graph_from_point"):
+            return graph_mod.graph_from_point(
+                (mid_lat, mid_lon),
+                dist=dist_m,
+                network_type="drive",
+            )
+        return ox.graph_from_point((mid_lat, mid_lon), dist=dist_m, network_type="drive")
+
+    north = max(origin_lat, dest_lat) + OSM_BBOX_PAD_DEG
+    south = min(origin_lat, dest_lat) - OSM_BBOX_PAD_DEG
+    east = max(origin_lon, dest_lon) + OSM_BBOX_PAD_DEG
+    west = min(origin_lon, dest_lon) - OSM_BBOX_PAD_DEG
+    return graph_from_bbox(ox, north=north, south=south, east=east, west=west)
 
 
 def graph_from_bbox(ox: Any, *, north: float, south: float, east: float, west: float):

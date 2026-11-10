@@ -1,7 +1,7 @@
 """AFDC charging-station pipeline.
 
-Shannon owns this package (H1–H3). It writes ``canonical_graph.json`` and
-does not import the optimizer search.
+Shannon owns this package (H1–H5). It writes ``canonical_graph.json`` /
+``trip_config.json`` scenario pairs and does not import the optimizer search.
 """
 
 from data_pipeline.chargers import FALLBACK_RATES_KW, load_stations
@@ -17,16 +17,28 @@ from data_pipeline.reduce_graph import (
     select_candidates,
 )
 from data_pipeline.road_graph import road_metrics
+from data_pipeline.scenarios import (
+    build_all_scenarios,
+    build_scenario,
+    default_trip_config,
+    scenario_specs,
+    write_scenario,
+)
 
 __all__ = [
     "DEFAULT_CORRIDOR_WIDTH_MILES",
     "FALLBACK_RATES_KW",
+    "build_all_scenarios",
     "build_canonical_graph",
     "build_edges",
     "build_nodes",
+    "build_scenario",
+    "default_trip_config",
     "export_graph",
     "filter_edges_by_battery",
     "load_stations",
     "road_metrics",
+    "scenario_specs",
     "select_candidates",
+    "write_scenario",
 ]
