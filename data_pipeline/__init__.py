@@ -17,13 +17,14 @@ from data_pipeline.reduce_graph import (
     select_candidates,
 )
 from data_pipeline.road_graph import road_metrics
-from data_pipeline.scenarios import (
-    build_all_scenarios,
-    build_scenario,
-    default_trip_config,
-    scenario_specs,
-    write_scenario,
-)
+
+# from data_pipeline.scenarios import (
+#     build_all_scenarios,
+#     build_scenario,
+#     default_trip_config,
+#     scenario_specs,
+#     write_scenario,
+# )
 
 __all__ = [
     "DEFAULT_CORRIDOR_WIDTH_MILES",
