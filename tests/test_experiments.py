@@ -73,7 +73,12 @@ def test_runner_writes_measured_rows_and_leaves_the_rest_unavailable(tmp_path: P
     assert {row["total_time_minutes"] for row in sample} == {"322.5"}
     assert {row["number_of_charging_stops"] for row in sample} == {"2"}
     assert {row["agreement"] for row in sample} == {"true"}
-    _assert_astar_expands_no_more_states(astar)
+    _assert_pairs_agree(astar)
+    assert {row["note"] for row in astar if row["instance_id"] == "detroit-chicago"} == {
+        "suite=S6; set=sample"
+    }
+    assert all("suite=S6" in row["note"] for row in astar)
+    assert not any("suite=J" in row["note"] for row in astar)  # J runs only with sweeps
 
     correctness = read_csv(tmp_path / "correctness.csv")
     skipped = [row for row in correctness if row["instance_id"] == "detroit-chicago"]
@@ -214,12 +219,21 @@ def test_missing_sample_and_bad_arguments_are_errors(
         solve_named("not-a-solver", {"nodes": [], "edges": []}, {})
 
 
-def _assert_astar_expands_no_more_states(rows: list[dict[str, str]]) -> None:
-    by_instance: dict[str, dict[str, str]] = {}
+def _assert_pairs_agree(rows: list[dict[str, str]]) -> None:
+    """A* must return label-setting's label. It need not expand fewer states."""
+    by_instance: dict[str, dict[str, dict[str, str]]] = {}
     for row in rows:
-        by_instance.setdefault(row["instance_id"], {})[row["algorithm"]] = row["states_expanded"]
+        by_instance.setdefault(row["instance_id"], {})[row["algorithm"]] = row
     for algorithms in by_instance.values():
-        assert int(algorithms["astar"]) <= int(algorithms["label_setting"])
+        plain, guided = algorithms["label_setting"], algorithms["astar"]
+        for column in (
+            "status",
+            "total_time_minutes",
+            "number_of_charging_stops",
+            "total_distance_miles",
+        ):
+            assert plain[column] == guided[column]
+        assert plain["agreement"] == guided["agreement"] == "true"
 
 
 def _without_runtime(rows: list[dict[str, str]]) -> list[dict[str, str]]:
