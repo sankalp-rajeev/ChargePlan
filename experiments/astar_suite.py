@@ -22,11 +22,12 @@ A replicate is one pool of 50 stations per geometry. Size is a prefix of the
 pool, so a station keeps its position and rate at every size. The road between
 two nodes (its length and its speed draw) is the same in every condition that
 contains both nodes. The speed condition changes only drive times, and the SOC
-step changes only the battery discretization and therefore which roads are in
-range. A factor change is therefore matched on the rest.
+step changes only the battery discretization. The physical road set is the
+same at both steps (see ``_in_range``). A factor change is therefore matched
+on the rest.
 
 Fixed: trip (Detroit to Chicago, about 237 straight-line miles), battery
-40 kWh, initial energy 30 kWh, reserve 2 kWh, 0.30 kWh per mile, and a rate
+40 kWh, initial energy 28 kWh, reserve 4 kWh, 0.30 kWh per mile, and a rate
 mix of 30% 50 kW, 40% 150 kW, and 30% 250 kW.
 
 Roads link every pair within battery range (the energy is at most a full
@@ -47,10 +48,11 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass
+from decimal import Decimal
 
 from experiments.certificate import min_charging_stops
 from experiments.instances import Instance
-from optimizer.model import InputError, discretize, edge_energy_steps, haversine_miles
+from optimizer.model import InputError, discretize, haversine_miles
 
 ORIGIN_LATLON = (42.3314, -83.0458)
 DESTINATION_LATLON = (41.8781, -87.6298)
@@ -68,8 +70,8 @@ VEHICLE = {
     "origin": "origin",
     "destination": "destination",
     "battery_capacity_kwh": 40,
-    "initial_soc_kwh": 30,
-    "reserve_kwh": 2,
+    "initial_soc_kwh": 28,
+    "reserve_kwh": 4,
     "consumption_kwh_per_mile": 0.30,
 }
 
@@ -198,6 +200,20 @@ def usable_steps(config: dict) -> int:
     return capacity - reserve
 
 
+def _in_range(miles: float, config: dict) -> bool:
+    """Whether a road fits a full battery above the reserve, in kWh and not in steps.
+
+    The rule does not depend on the SOC step, so every SOC resolution of one
+    replicate has the identical road set. With the fixed vehicle, a 1 kWh and a
+    4 kWh step both divide the 36 kWh above the reserve and the 28 kWh initial
+    energy, so the rounded values are the same at both resolutions and a road
+    fits in kWh exactly when its ceiled step count fits.
+    """
+    energy = Decimal(str(miles)) * Decimal(str(config["consumption_kwh_per_mile"]))
+    usable = Decimal(str(config["battery_capacity_kwh"])) - Decimal(str(config["reserve_kwh"]))
+    return energy <= usable
+
+
 def heuristic_origin_minutes(graph: dict) -> float:
     """The A* heuristic at the origin in minutes: straight line over the fastest road."""
     nodes = {node["id"]: node for node in graph["nodes"]}
@@ -252,7 +268,6 @@ def _instance(
     if len(stations) != size:
         raise InputError(f"pool cannot supply {size} stations")
     config = {**VEHICLE, "soc_step_kwh": step}
-    usable = usable_steps(config)
     nodes = [_node("origin", "origin", None, *ORIGIN_LATLON)]
     nodes.extend(_node(s.node_id, "charger", s.rate_kw, s.lat, s.lon) for s in stations)
     nodes.append(_node("destination", "destination", None, *DESTINATION_LATLON))
@@ -265,7 +280,7 @@ def _instance(
             if end[0] in {start[0], "origin"}:
                 continue
             miles, mph = roads.get(start, end)
-            if edge_energy_steps(miles, config) > usable:
+            if not _in_range(miles, config):
                 continue
             mph = HOMOGENEOUS_MPH if speed == "homogeneous" else mph
             edges.append(

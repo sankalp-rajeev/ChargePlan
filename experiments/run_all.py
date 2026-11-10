@@ -261,6 +261,8 @@ def run(
     write_csv(output_dir / "correctness.csv", correctness)
     if a_summary is not None:
         write_summary(output_dir / SUMMARY_FILE, a_summary, a_records)
+    else:
+        (output_dir / SUMMARY_FILE).unlink(missing_ok=True)  # skipped: no stale summary
     write_csv(output_dir / "astar_comparison.csv", astar_rows)
     for filename, rows in measured.items():
         write_csv(output_dir / filename, rows)
@@ -269,9 +271,13 @@ def run(
             summarize_scaling(measured["charger_scaling.csv"]), indent=2, sort_keys=True
         )
         (output_dir / SCALING_SUMMARY_FILE).write_text(summary_text + "\n", encoding="utf-8")
+    else:
+        (output_dir / SCALING_SUMMARY_FILE).unlink(missing_ok=True)
     if astar_summary is not None:
         astar_text = json.dumps(astar_summary, indent=2, sort_keys=True)
         (output_dir / ASTAR_SUMMARY_FILE).write_text(astar_text + "\n", encoding="utf-8")
+    else:
+        (output_dir / ASTAR_SUMMARY_FILE).unlink(missing_ok=True)
     failures_path = output_dir / ASTAR_FAILURES_FILE
     if astar_failures:
         failures_path.write_text(json.dumps(astar_failures, indent=2) + "\n", encoding="utf-8")

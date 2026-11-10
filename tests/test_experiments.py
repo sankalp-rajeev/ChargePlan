@@ -59,6 +59,45 @@ def test_metric_row_rejects_a_result_without_metrics() -> None:
         )
 
 
+STALE_SUMMARIES = (
+    "correctness_summary.json",
+    "charger_scaling_summary.json",
+    "astar_summary.json",
+    "astar_failures.json",
+)
+
+
+def _plant_stale_summaries(directory: Path) -> None:
+    for name in STALE_SUMMARIES:
+        (directory / name).write_text('{"stale": true}\n', encoding="utf-8")
+
+
+def test_skipped_experiments_leave_no_stale_summary_files(tmp_path: Path) -> None:
+    # --correctness 0 and --no-sweeps skip A, D, and J, so none of their summaries may survive.
+    _plant_stale_summaries(tmp_path)
+    run(tmp_path, seed=505, tiny_count=1, correctness_count=0, sweeps=False)
+    assert {path.name for path in tmp_path.iterdir()} == set(OUTPUT_FILES)
+    for name in STALE_SUMMARIES:
+        assert not (tmp_path / name).exists(), name
+
+    # Experiment A runs but the sweeps are skipped: only A's summary is rewritten.
+    _plant_stale_summaries(tmp_path)
+    run(tmp_path, seed=505, tiny_count=1, correctness_count=20, sweeps=False)
+    summary = (tmp_path / "correctness_summary.json").read_text(encoding="utf-8")
+    assert '"stale"' not in summary
+    for name in STALE_SUMMARIES[1:]:
+        assert not (tmp_path / name).exists(), name
+
+
+def test_cli_removes_stale_summaries_when_experiments_are_skipped(tmp_path: Path) -> None:
+    _plant_stale_summaries(tmp_path)
+    code = main(
+        ["--out", str(tmp_path), "--tiny", "1", "--correctness", "0", "--no-sweeps"]
+    )
+    assert code == 0
+    assert not any((tmp_path / name).exists() for name in STALE_SUMMARIES)
+
+
 def test_runner_writes_measured_rows_and_leaves_the_rest_unavailable(tmp_path: Path) -> None:
     summary = run(tmp_path, seed=505, tiny_count=2, correctness_count=0, sweeps=False)
     assert summary.disagreements == ()

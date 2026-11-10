@@ -247,7 +247,7 @@ Experiment J asks two questions about the A* search of Section 14. Does it retur
 
 3 × 3 × 2 × 2 = 36 cells, 6 replicates each, 216 instances. A full Cartesian product over more levels was not used; every cell has the same number of replicates, and the replicate counts are in the summary's `design` block.
 
-Controlled and fixed: the Detroit–Chicago trip (about 237 straight-line miles), a 40 kWh battery with 30 kWh initial SOC, a 2 kWh reserve, 0.30 kWh per mile, and a rate mix of 30% 50 kW, 40% 150 kW, and 30% 250 kW by largest remainder, shuffled so a rate depends on neither the index nor the position. The direct trip cannot be driven on one charge. Every instance needs charging, and `min_stops` in each note is the energy-only certificate from Experiment A.
+Controlled and fixed: the Detroit–Chicago trip (about 237 straight-line miles), a 40 kWh battery with 28 kWh initial SOC, a 4 kWh reserve, 0.30 kWh per mile, and a rate mix of 30% 50 kW, 40% 150 kW, and 30% 250 kW by largest remainder, shuffled so a rate depends on neither the index nor the position. Initial SOC and reserve are multiples of both SOC steps, so they discretize to the same energy at 1 kWh (28 and 4 steps of 40) and at 4 kWh (7 and 1 steps of 10); the step changes resolution and nothing else about the vehicle. The starting charge covers about 80 miles above the reserve and a full battery about 120, so the direct trip cannot be driven. Every instance needs charging, and `min_stops` in each note is the energy-only certificate from Experiment A. It is 2 for 130 of the 216 instances and 3 for 86. The optimal plans use 2 to 5 stops.
 
 | Geometry | Corridor bulge | Station scatter (σ) | Wide-scatter share | Road length over straight line |
 | --- | --- | --- | --- | --- |
@@ -255,7 +255,7 @@ Controlled and fixed: the Detroit–Chicago trip (about 237 straight-line miles)
 | `curved` | 40-mile arc | 6 miles | 10% (σ 15 miles) | 1.08–1.25 |
 | `detour` | 25-mile arc | 15 miles | 35% (σ 45 miles) | 1.20–1.55 |
 
-Graph rules. The stations are in 2-D space. A directed road runs from every node except the destination to every node except the origin when its discretized energy fits a full battery above the reserve. Its length is the straight line times the geometry's factor, rounded up to 0.001 mile, so it is never shorter than the straight line. Drive time is `miles / mph`, at least 0.01 minute, so it is positive. All instances pass `load_graph` and `load_config`. These are synthetic roads. They are not OpenStreetMap or any real network, and they are not described as one.
+Graph rules. The stations are in 2-D space. A directed road runs from every node except the destination to every node except the origin when its energy in kWh (`0.30 × miles`) fits the 36 kWh of a full battery above the reserve. The test is in kWh, not in steps, so the physical road graph (nodes, roads, distances, drive times) is identical at 1 kWh and 4 kWh for a matched instance, and the SOC step changes only the battery discretization. A test checks this for every match. Its length is the straight line times the geometry's factor, rounded up to 0.001 mile, so it is never shorter than the straight line. Drive time is `miles / mph`, at least 0.01 minute, so it is positive. All instances pass `load_graph` and `load_config`. These are synthetic roads. They are not OpenStreetMap or any real network, and they are not described as one.
 
 Seeds and replication. Replicate `r` of geometry `g` draws a 50-station pool from `Random("chargeplan-experiment-j:<seed>:<g>:<r>:pool")` in nested blocks, so a size is a prefix of the pool (10 ⊂ 25 ⊂ 50). A road's length factor and speed draw come from a stream keyed by the node pair and are reused by every condition that contains both nodes, so the speed and SOC conditions of one replicate share their geometry. Same seed gives the same inputs. A different seed gives different pools. `--seed` applies to J, and `--astar-replicates` changes the replicate count.
 
@@ -273,30 +273,30 @@ Default run: seed 505, 6 replicates per cell, 3 timing repeats. The whole `run_a
 
 - 216 instances, all feasible, so there are no infeasible J instances to report. The code handles them and unit tests cover that path, but this suite does not produce one.
 - 0 objective mismatches. All 216 pairs agree on status, time, stops, and distance.
-- State reduction: median 17.5% (interquartile range 13.3–24.0%, minimum 1.3%, maximum 45.9%), pooled 19.5%. 0 instances had a negative reduction or no reduction, so on these 216 instances A* never expanded more states than label-setting. That is a measurement on this suite, and no test asserts it.
-- Peak states stored: median reduction 10.7% (IQR 6.9–15.4%, minimum 0%, maximum 32.3%), pooled 12.7%. On 5 of 216 instances (2.3%) A* stored no fewer states.
-- Runtime: the median A*/LS ratio is 0.89 (IQR 0.81–0.94, range 0.53–1.25), and the pooled ratio is 0.84. A* was slower on 15 of 216 instances (6.9%). A* does extra work per state (computing `h`), so a small state saving can be a runtime loss. Runtime depends on the machine and no test asserts it.
+- State reduction: median 17.2% (interquartile range 13.1–23.3%, minimum 1.3%, maximum 43.2%), pooled 18.3%. 0 instances had a negative reduction or no reduction, so on these 216 instances A* never expanded more states than label-setting. That is a measurement on this suite, and no test asserts it.
+- Peak states stored: median reduction 10.2% (IQR 7.0–14.5%, minimum 0%, maximum 31.3%), pooled 12.0%. On 6 of 216 instances (2.8%) A* stored no fewer states.
+- Runtime: the median A*/LS ratio is 0.86 (IQR 0.78–0.97, range 0.52–3.09), and the pooled ratio is 0.85. A* was slower on 38 of 216 instances (17.6%). A* does extra work per state (computing `h`), so a small state saving can be a runtime loss. Runtime is also noisy. An earlier run of the same states with the previous vehicle settings had A* slower on 15 instances and a worst ratio of 1.25, and the 3.09 here is a single instance, so I read the slower-instance counts and the extremes as timing noise on top of the real per-state cost, not as a stable result. Runtime depends on the machine and no test asserts it.
 
 State reduction by factor, median over feasible instances (pooled in the JSON):
 
 | Factor | Level | Median reduction % |
 | --- | --- | --- |
-| Geometry | straight | 25.9 |
-|  | curved | 14.7 |
-|  | detour | 15.0 |
-| Road speeds | homogeneous | 22.3 |
-|  | heterogeneous | 14.4 |
-| SOC step | 1 kWh | 18.9 |
+| Geometry | straight | 24.7 |
+|  | curved | 14.1 |
+|  | detour | 14.9 |
+| Road speeds | homogeneous | 20.9 |
+|  | heterogeneous | 14.6 |
+| SOC step | 1 kWh | 17.4 |
 |  | 4 kWh | 16.7 |
-| Chargers | 10 | 17.7 |
-|  | 25 | 16.4 |
-|  | 50 | 18.9 |
+| Chargers | 10 | 17.0 |
+|  | 25 | 15.9 |
+|  | 50 | 18.1 |
 
-By geometry and speed, median reduction (range): straight/homogeneous 29.8% (21.3–40.3), straight/heterogeneous 20.8% (14.4–45.9), curved/homogeneous 15.9% (12.1–26.7), detour/homogeneous 19.5% (11.7–35.0), curved/heterogeneous 12.4% (4.7–20.1), and detour/heterogeneous 10.8% (1.3–21.0). A* was slower in 25% of detour/heterogeneous instances and in 11% of curved/heterogeneous. The other four cells had 0–3%.
+By geometry and speed, median reduction (range): straight/homogeneous 27.2% (21.3–36.4), straight/heterogeneous 19.4% (14.4–43.2), curved/homogeneous 15.2% (11.7–24.7), detour/homogeneous 19.3% (11.7–28.0), curved/heterogeneous 11.1% (3.3–18.5), and detour/heterogeneous 9.8% (1.3–20.9). The share of instances where A* ran slower than label-setting was 33% for detour/heterogeneous, 22% for curved/heterogeneous, 19% for curved/homogeneous, 17% for detour/homogeneous, 11% for straight/heterogeneous, and 3% for straight/homogeneous.
 
-Where A* helps most and least. The biggest savings are on straight corridors with one road speed, where the heuristic is nearly exact. The smallest are on winding or detoured roads with mixed speeds, where `h` is loose. That agrees with the recorded quantities: the median `h_origin_minutes / total_time` is 0.92 for straight/homogeneous and 0.61 for detour/heterogeneous, and the median route ratio is 1.03 against 1.38. Across all 216 instances the state reduction has a Spearman correlation of +0.72 with the heuristic ratio and −0.66 with the route ratio. This is an association in this suite. I did not isolate a cause. Size and SOC step matter little compared with geometry and speed: the size medians span 16.4–18.9% and are not monotonic, so I draw no size trend. The 1 kWh step is slightly higher than the 4 kWh step (18.9% against 16.7%), a difference smaller than the spread within a cell.
+Where A* helps most and least. The biggest savings are on straight corridors with one road speed, where the heuristic is nearly exact. The smallest are on winding or detoured roads with mixed speeds, where `h` is loose. That agrees with the recorded quantities: the median `h_origin_minutes / total_time` is 0.92 for straight/homogeneous and 0.61 for detour/heterogeneous, and the median route ratio is 1.03 against 1.38. Across all 216 instances the state reduction has a Spearman correlation of +0.69 with the heuristic ratio and −0.63 with the route ratio. This is an association in this suite. I did not isolate a cause. Size and SOC step matter little compared with geometry and speed: the size medians span 15.9–18.1% and are not monotonic, so I draw no size trend. The 1 kWh step is slightly higher than the 4 kWh step (17.4% against 16.7%), a difference smaller than the spread within a cell. Because the road graph is identical at both steps, this difference comes from the discretization alone.
 
-Memory. `peak_states_stored` is the size of the best-label table, not the heap, so it is only a proxy for the `O(S·|E| + M·S)` bound. A* lowers it by less than it lowers the expanded states (10.7% against 17.5%). I did not isolate why.
+Memory. `peak_states_stored` is the size of the best-label table, not the heap, so it is only a proxy for the `O(S·|E| + M·S)` bound. A* lowers it by less than it lowers the expanded states (10.2% against 17.2%). I did not isolate why.
 
 Plots. `states_astar_vs_labelsetting.png` is one point per instance, colored by geometry, with the equal-states diagonal. `astar_savings_by_factor.png` shows the median reduction by size, geometry, SOC step, and speed, with interquartile whiskers.
 
@@ -330,4 +330,4 @@ make experiments
 python -m experiments.run_all --out results --plots plots --seed 505 --tiny 20 --correctness 200 --repeats 3
 ```
 
-`--charger-counts 10,25,50,100,200` and `--scaling-replicates N` change Experiment D (200 is the most the pool holds, 10 replicates is the default). `--astar-replicates N` changes Experiment J (6 per cell is the default). A run with sweeps also writes `charger_scaling_summary.json` and `astar_summary.json`. `--no-sweeps` writes the S6 files only and leaves C, D, and E unmeasured. `--correctness 0` skips Experiment A and does not write `correctness_summary.json`. `--tiny` must be at least 1.
+`--charger-counts 10,25,50,100,200` and `--scaling-replicates N` change Experiment D (200 is the most the pool holds, 10 replicates is the default). `--astar-replicates N` changes Experiment J (6 per cell is the default). A run with sweeps also writes `charger_scaling_summary.json` and `astar_summary.json`. `--no-sweeps` writes the S6 files only and leaves C, D, E, and J unmeasured; it deletes any `charger_scaling_summary.json`, `astar_summary.json`, and `astar_failures.json` left in the output directory by an earlier run. `--correctness 0` skips Experiment A, does not write `correctness_summary.json`, and deletes an old one. `--tiny` must be at least 1.

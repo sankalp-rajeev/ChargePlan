@@ -105,7 +105,7 @@ S7 is the algorithm sweeps in [PR #30](https://github.com/sankalp-rajeev/ChargeP
 - Experiment C changes only the SOC step. The 0.1 kWh sample is the reference. A separate 10 kWh edge is feasible at 0.1 kWh and infeasible at 6 kWh.
 - Experiment D keeps 10, 25, 50, and 100 stations from a seeded two-dimensional pool (10 pools per count). A station keeps its position and rate at every count, and roads connect stations that are within battery range. Adding stations also adds roads, so node count and graph density grow together. 200 stations run only on request.
 - Experiment E changes only battery capacity on the sample roads. Initial SOC stays 30 kWh. 40 kWh is infeasible.
-- Experiment J runs its own 216 synthetic networks (geometry, charger count, road speeds, SOC step). A* returned the same label as label-setting on all of them and expanded a median 17.5% fewer states, from 1.3% to 45.9%. It saves most on straight corridors with one road speed and least on winding roads with mixed speeds. The roads are synthetic, and the real-network comparison waits for S9.
+- Experiment J runs its own 216 synthetic networks (geometry, charger count, road speeds, SOC step). A* returned the same label as label-setting on all of them and expanded a median 17.2% fewer states, from 1.3% to 43.2%. It saves most on straight corridors with one road speed and least on winding roads with mixed speeds. The roads are synthetic, and the real-network comparison waits for S9.
 - Greedy, charger density, initial SOC, charger speed, and real routes stay `UNAVAILABLE`. Their two plots are not written.
 - Inputs, the density confound in Experiment D, and the commands are in `experiments/README.md`.
 

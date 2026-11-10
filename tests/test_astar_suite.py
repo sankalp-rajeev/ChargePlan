@@ -46,6 +46,7 @@ from optimizer.battery_state_optimizer import _heuristic_ms
 from optimizer.battery_state_optimizer import solve as real_solve
 from optimizer.model import (
     InputError,
+    discretize,
     edge_energy_steps,
     haversine_miles,
     load_config,
@@ -178,16 +179,44 @@ def test_factors_are_matched_where_only_one_factor_changes() -> None:
     assert [e["drive_time_minutes"] for e in base.graph["edges"]] != [
         e["drive_time_minutes"] for e in faster.graph["edges"]
     ]
-    # The SOC step changes the config and which roads are in range, not the stations.
-    assert base.graph["nodes"] == coarse.graph["nodes"]
+    # The SOC step changes the config only. The physical graph is identical.
     assert base.config["soc_step_kwh"] != coarse.config["soc_step_kwh"]
     assert {k: v for k, v in base.config.items() if k != "soc_step_kwh"} == {
         k: v for k, v in coarse.config.items() if k != "soc_step_kwh"
     }
-    base_roads = {(e["from"], e["to"]): e["distance_miles"] for e in base.graph["edges"]}
-    for edge in coarse.graph["edges"]:
-        assert base_roads[(edge["from"], edge["to"])] == edge["distance_miles"]
-    assert len(coarse.graph["edges"]) < len(base.graph["edges"])
+    assert base.graph == coarse.graph
+
+
+def test_the_physical_graph_is_identical_across_soc_resolutions_for_every_match() -> None:
+    by_match: dict[tuple, list[Instance]] = {}
+    for item in _grid():
+        key = (
+            item.meta["geometry"],
+            item.meta["size"],
+            item.meta["speed"],
+            item.meta["replicate"],
+        )
+        by_match.setdefault(key, []).append(item)
+    assert len(by_match) == len(_grid()) // len(SOC_STEPS)
+    for key, group in by_match.items():
+        assert sorted(item.meta["soc_step"] for item in group) == sorted(SOC_STEPS), key
+        first = group[0]
+        for other in group[1:]:
+            assert other.graph == first.graph, key  # nodes, roads, distances, drive times
+            assert other.meta["edges"] == first.meta["edges"], key
+            assert other.meta["h_origin_minutes"] == first.meta["h_origin_minutes"], key
+
+
+def test_initial_energy_and_reserve_are_unchanged_by_discretization() -> None:
+    assert VEHICLE["initial_soc_kwh"] == 28
+    assert VEHICLE["reserve_kwh"] == 4
+    for item in _grid():
+        step = item.config["soc_step_kwh"]
+        capacity, initial, reserve, _ = discretize(item.config)
+        assert capacity * step == item.config["battery_capacity_kwh"], item.instance_id
+        assert initial * step == item.config["initial_soc_kwh"], item.instance_id
+        assert reserve * step == item.config["reserve_kwh"], item.instance_id
+        assert (capacity, initial, reserve) in {(40, 28, 4), (10, 7, 1)}
 
 
 def test_vehicle_trip_and_rate_mix_are_fixed_across_the_grid() -> None:
