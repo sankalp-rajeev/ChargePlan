@@ -4,10 +4,9 @@ Owned by Shannon (H3). Nodes use ids, types, coordinates, and
 ``charge_rate_kw``. Edges are directed and store distance and driving time only.
 
 ``build_canonical_graph`` wires H1/H2 outputs into a reduced optimizer graph:
-corridor candidates become charger nodes, road metrics fill directed edges to
-the next ``neighbor_count`` stations along the OD corridor (same pattern as
-Experiment D), and edges whose energy exceeds the experiment battery budget
-are omitted. ``export_graph`` validates the frozen contract before writing.
+corridor candidates become charger nodes, and road metrics fill every directed
+forward edge whose energy stays within the experiment battery budget.
+``export_graph`` validates the frozen contract before writing.
 """
 
 from __future__ import annotations
@@ -23,6 +22,7 @@ from data_pipeline.reduce_graph import (
     DEFAULT_CORRIDOR_WIDTH_MILES,
     DEFAULT_MAX_BATTERY_KWH,
     filter_edges_by_battery,
+    is_edge_within_battery,
     point_to_segment,
     select_candidates,
     to_local_miles,
@@ -34,7 +34,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 _GRAPH_SCHEMA = _ROOT / "contracts" / "canonical_graph.schema.json"
 _LENGTH_TOLERANCE_MILES = 1e-6
 
-# Sparse forward connectivity: each node links to the next k along the corridor.
+# Retained only for regression comparison against the old neighbor-limited graph.
 DEFAULT_NEIGHBOR_COUNT = 3
 
 
@@ -133,6 +133,48 @@ def build_edges(
     nodes: list[dict],
     cache_dir: str | Path,
     *,
+    road_backend: Literal["auto", "osmnx", "haversine"] = "auto",
+    max_battery_kwh: float = DEFAULT_MAX_BATTERY_KWH,
+    consumption_kwh_per_mile: float = DEFAULT_CONSUMPTION_KWH_PER_MILE,
+    origin_id: str = "origin",
+    destination_id: str = "destination",
+) -> list[dict]:
+    """Build directed forward edges for every in-range corridor hop.
+
+    Nodes are ordered by progress from origin to destination. Each ordered
+    pair ``i -> j`` (``j > i``) is kept when ``road_metrics`` distance fits the
+    battery energy budget. This includes long feasible skips that a fixed
+    neighbor window would drop.
+    """
+    by_id = {node["id"]: node for node in nodes}
+    if origin_id not in by_id or destination_id not in by_id:
+        raise ValueError("nodes must include the origin and destination ids")
+
+    ordered = _order_nodes_along_corridor(nodes, origin_id, destination_id)
+    edges: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+
+    for index, start in enumerate(ordered):
+        for end in ordered[index + 1 :]:
+            edge = _road_edge(start, end, cache_dir, road_backend)
+            if not is_edge_within_battery(
+                float(edge["distance_miles"]),
+                max_battery_kwh=max_battery_kwh,
+                consumption_kwh_per_mile=consumption_kwh_per_mile,
+            ):
+                continue
+            key = (edge["from"], edge["to"])
+            if key not in seen:
+                edges.append(edge)
+                seen.add(key)
+
+    return edges
+
+
+def build_edges_neighbor_limited(
+    nodes: list[dict],
+    cache_dir: str | Path,
+    *,
     neighbor_count: int = DEFAULT_NEIGHBOR_COUNT,
     road_backend: Literal["auto", "osmnx", "haversine"] = "auto",
     max_battery_kwh: float = DEFAULT_MAX_BATTERY_KWH,
@@ -140,11 +182,11 @@ def build_edges(
     origin_id: str = "origin",
     destination_id: str = "destination",
 ) -> list[dict]:
-    """Build directed forward edges along the corridor using ``road_metrics``.
+    """Former neighbor-window connectivity, kept for regression comparison.
 
-    Nodes are ordered by progress from origin to destination. Each node links
-    to the next ``neighbor_count`` nodes when the hop is within the battery
-    energy budget. A direct origin→destination edge is added when feasible.
+    Each node linked only to the next ``neighbor_count`` corridor successors
+    (plus a direct origin→destination edge when feasible). Prefer
+    ``build_edges`` for production graphs.
     """
     if neighbor_count < 1:
         raise ValueError("neighbor_count must be at least 1")
@@ -188,7 +230,6 @@ def build_canonical_graph(
     cache_dir: str | Path,
     *,
     corridor_width_miles: float = DEFAULT_CORRIDOR_WIDTH_MILES,
-    neighbor_count: int = DEFAULT_NEIGHBOR_COUNT,
     max_chargers: int | None = None,
     road_backend: Literal["auto", "osmnx", "haversine"] = "auto",
     max_battery_kwh: float = DEFAULT_MAX_BATTERY_KWH,
@@ -221,7 +262,6 @@ def build_canonical_graph(
     edges = build_edges(
         nodes,
         cache_dir,
-        neighbor_count=neighbor_count,
         road_backend=road_backend,
         max_battery_kwh=max_battery_kwh,
         consumption_kwh_per_mile=consumption_kwh_per_mile,

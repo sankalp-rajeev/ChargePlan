@@ -7,13 +7,17 @@ The default corridor is Michigan and the adjacent Midwest, including
 Detroit–Chicago and Detroit–Cleveland.
 
 ``road_metrics`` caches each OD pair under ``cache_dir`` so experiment runs do
-not need live Overpass access. Backend selection:
+not need live Overpass access. Cache entries are backend-aware: an OSMnx
+request never reuses a haversine estimate, and each hit preserves the original
+routing ``backend`` (with ``cached=True``).
 
-1. return a cache hit when present,
+Backend selection:
+
+1. return a matching cache hit when present (OSMnx and haversine are separate),
 2. otherwise try OSMnx shortest-time routing when the package is installed,
-3. otherwise fall back to a documented haversine estimate (distance factor
-   1.25, speed 55 mph) that still respects the contract lower bound
-   ``distance_miles >= great-circle``.
+3. otherwise (``backend="auto"`` only) fall back to a documented haversine
+   estimate (distance factor 1.25, speed 55 mph) that still respects the
+   contract lower bound ``distance_miles >= great-circle``.
 """
 
 from __future__ import annotations
@@ -33,6 +37,9 @@ DEFAULT_SPEED_MPH = 55.0
 # Degrees of padding around an OD bbox when downloading an OSM drive graph.
 OSM_BBOX_PAD_DEG = 0.2
 
+CacheSource = Literal["osmnx", "haversine"]
+CACHE_SOURCES: tuple[CacheSource, ...] = ("osmnx", "haversine")
+
 
 def road_metrics(
     origin: dict,
@@ -44,23 +51,40 @@ def road_metrics(
     """Return road ``distance_miles`` and ``drive_time_minutes`` between two points.
 
     ``origin`` / ``destination`` need ``lat`` and ``lon``. The returned dict
-    always includes those two metric keys plus ``backend`` naming the source.
+    always includes those two metric keys plus ``backend`` naming the routing
+    source (``osmnx`` or ``haversine``) and ``cached`` for cache hits.
     """
     origin_lat, origin_lon = require_lat_lon(origin, "origin")
     dest_lat, dest_lon = require_lat_lon(destination, "destination")
     cache_root = Path(cache_dir)
     cache_root.mkdir(parents=True, exist_ok=True)
-    cache_path = cache_root / cache_name(origin_lat, origin_lon, dest_lat, dest_lon)
-
-    cached = read_cache(cache_path)
-    if cached is not None:
-        return cached
 
     if backend == "haversine":
+        cached = load_cached_metrics(
+            cache_root, origin_lat, origin_lon, dest_lat, dest_lon, source="haversine"
+        )
+        if cached is not None:
+            return cached
         metrics = haversine_metrics(origin_lat, origin_lon, dest_lat, dest_lon)
     elif backend == "osmnx":
+        cached = load_cached_metrics(
+            cache_root, origin_lat, origin_lon, dest_lat, dest_lon, source="osmnx"
+        )
+        if cached is not None:
+            return cached
+        # Never fall back to a haversine cache or estimate for an explicit OSM request.
         metrics = osmnx_metrics(origin_lat, origin_lon, dest_lat, dest_lon)
     else:
+        cached = load_cached_metrics(
+            cache_root, origin_lat, origin_lon, dest_lat, dest_lon, source="osmnx"
+        )
+        if cached is not None:
+            return cached
+        cached = load_cached_metrics(
+            cache_root, origin_lat, origin_lon, dest_lat, dest_lon, source="haversine"
+        )
+        if cached is not None:
+            return cached
         try:
             metrics = osmnx_metrics(origin_lat, origin_lon, dest_lat, dest_lon)
         except Exception:
@@ -70,13 +94,18 @@ def road_metrics(
     straight = haversine_miles(origin_lat, origin_lon, dest_lat, dest_lon)
     distance = max(float(metrics["distance_miles"]), straight)
     drive_time = max(float(metrics["drive_time_minutes"]), 0.0)
+    raw_source = metrics["backend"]
+    if raw_source not in CACHE_SOURCES:
+        raise RuntimeError(f"unexpected routing backend {raw_source!r}")
+    source: CacheSource = raw_source
     result = {
         "distance_miles": distance,
         "drive_time_minutes": drive_time,
-        "backend": metrics["backend"],
+        "backend": source,
+        "cached": False,
     }
     write_cache(
-        cache_path,
+        cache_root / cache_name(origin_lat, origin_lon, dest_lat, dest_lon, source),
         {
             **result,
             "origin": {"lat": origin_lat, "lon": origin_lon},
@@ -223,7 +252,7 @@ def shortest_path(ox: Any, graph: Any, origin_node: Any, dest_node: Any):
     return ox.shortest_path(graph, origin_node, dest_node, weight="travel_time")
 
 
-def cache_name(
+def pair_digest(
     origin_lat: float,
     origin_lon: float,
     dest_lat: float,
@@ -233,11 +262,57 @@ def cache_name(
         f"{origin_lat:.5f},{origin_lon:.5f}->"
         f"{dest_lat:.5f},{dest_lon:.5f}"
     )
-    digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
-    return f"route_{digest}.json"
+    return hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
 
 
-def read_cache(path: Path) -> dict | None:
+def cache_name(
+    origin_lat: float,
+    origin_lon: float,
+    dest_lat: float,
+    dest_lon: float,
+    source: CacheSource,
+) -> str:
+    if source not in CACHE_SOURCES:
+        raise ValueError(f"unsupported cache source {source!r}")
+    digest = pair_digest(origin_lat, origin_lon, dest_lat, dest_lon)
+    return f"route_{digest}_{source}.json"
+
+
+def legacy_cache_name(
+    origin_lat: float,
+    origin_lon: float,
+    dest_lat: float,
+    dest_lon: float,
+) -> str:
+    """Pre-backend-aware filename used only for read compatibility."""
+    return f"route_{pair_digest(origin_lat, origin_lon, dest_lat, dest_lon)}.json"
+
+
+def load_cached_metrics(
+    cache_root: Path,
+    origin_lat: float,
+    origin_lon: float,
+    dest_lat: float,
+    dest_lon: float,
+    *,
+    source: CacheSource,
+) -> dict | None:
+    """Load a cache entry only when it was produced by ``source``."""
+    primary = cache_root / cache_name(
+        origin_lat, origin_lon, dest_lat, dest_lon, source
+    )
+    cached = read_cache(primary, expected_source=source)
+    if cached is not None:
+        return cached
+
+    # Older caches used a single OD filename and erased the source on read.
+    legacy = cache_root / legacy_cache_name(
+        origin_lat, origin_lon, dest_lat, dest_lon
+    )
+    return read_cache(legacy, expected_source=source)
+
+
+def read_cache(path: Path, *, expected_source: CacheSource) -> dict | None:
     if not path.is_file():
         return None
     try:
@@ -251,10 +326,25 @@ def read_cache(path: Path) -> dict | None:
         drive_time = float(payload["drive_time_minutes"])
     except (KeyError, TypeError, ValueError):
         return None
+
+    stored = payload.get("backend")
+    # Legacy files may omit backend; only haversine may claim those, since the
+    # historical shared cache was dominated by offline estimates.
+    if stored is None:
+        if expected_source != "haversine":
+            return None
+    elif stored in CACHE_SOURCES:
+        if stored != expected_source:
+            return None
+    else:
+        # Old readers rewrote hits as backend="cache"; treat as unknown source.
+        return None
+
     return {
         "distance_miles": distance,
         "drive_time_minutes": drive_time,
-        "backend": "cache",
+        "backend": expected_source,
+        "cached": True,
     }
 
 
