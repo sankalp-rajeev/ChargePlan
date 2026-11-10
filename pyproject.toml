@@ -40,3 +40,7 @@ known-first-party = ["optimizer", "data_pipeline", "visualizer", "experiments"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+  "network: live Overpass/OSMnx checks (opt-in; excluded from default CI)",
+]
+addopts = "-m 'not network'"
