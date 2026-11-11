@@ -66,7 +66,6 @@ class ScenarioSpec:
     consumption_kwh_per_mile: float = DEFAULT_CONSUMPTION_KWH_PER_MILE
     soc_step_kwh: float = 1.0
     max_chargers: int | None = 25
-    neighbor_count: int = 3
     corridor_width_miles: float = DEFAULT_CORRIDOR_WIDTH_MILES
     station_filter: Literal["all", "mixed_speeds", "sparse"] = "all"
 
@@ -365,7 +364,6 @@ def build_scenario(
         filtered,
         cache_dir,
         corridor_width_miles=spec.corridor_width_miles,
-        neighbor_count=spec.neighbor_count,
         max_chargers=None,  # already filtered/subsampled above
         road_backend=road_backend,
         max_battery_kwh=spec.battery_capacity_kwh,

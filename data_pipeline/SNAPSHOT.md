@@ -70,8 +70,8 @@ graph = build_canonical_graph(
     stations,
     cache_dir=".osm_cache",
     max_chargers=25,          # evenly subsample the corridor
-    neighbor_count=3,         # forward edges to the next 3 nodes
     road_backend="haversine", # or "osmnx" / "auto"
+    # edges: every forward pair within the battery energy budget
 )
 export_graph(graph["nodes"], graph["edges"], "data/processed/canonical_graph.json")
 ```

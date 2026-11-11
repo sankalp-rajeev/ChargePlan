@@ -5,7 +5,10 @@ and the sweeps that are intentionally smaller than the PRD examples are
 documented in ``experiments/README.md``.
 
 Label-setting and A* run on the Detroit–Chicago sample, the S6 tiny graphs,
-and Experiments C, D, E, and J. Exact search runs on the S6 tiny graphs and
+and Experiments C, D, E, and J. Experiment J builds its own instances and
+shares no rows with D or C. Its rows and the S6 rows both land in
+``astar_comparison.csv`` and are told apart by the note (``suite=J`` or
+``suite=S6``). Exact search runs on the S6 tiny graphs and
 on Experiment A, and only inside the S6 bound. The greedy baseline, Experiments
 F through I, and real-data routes stay ``UNAVAILABLE``.
 """
@@ -13,16 +16,23 @@ F through I, and real-data routes stay ``UNAVAILABLE``.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from experiments.astar_suite import SUITE_REPLICATES
+from experiments.astar_summary import FAILURES_FILE as ASTAR_FAILURES_FILE
+from experiments.astar_summary import SUMMARY_FILE as ASTAR_SUMMARY_FILE
+from experiments.astar_summary import format_report as format_astar_report
+from experiments.correctness import SUMMARY_FILE, format_report, write_summary
 from experiments.instances import (
     CAPACITIES,
     CHARGER_COUNTS,
     CORRECTNESS_COUNT,
     DEFAULT_SEED,
     DEFAULT_TINY,
+    SCALING_REPLICATES,
     TIMING_REPEATS,
     Instance,
     exact_block_reason,
@@ -31,12 +41,14 @@ from experiments.instances import (
 )
 from experiments.metrics import OUTPUT_FILES, metric_row, objective, write_csv
 from experiments.plots import MEASURED_PLOTS, write_plots
+from experiments.scaling import SUMMARY_FILE as SCALING_SUMMARY_FILE
+from experiments.scaling import summarize_scaling
 from experiments.sweeps import (
-    experiment_a,
+    experiment_a_report,
     experiment_c,
     experiment_d,
     experiment_e,
-    journal_rows,
+    experiment_j_report,
 )
 from optimizer.battery_state_optimizer import solve as label_solve
 from optimizer.exact_solver import solve as exact_solve
@@ -105,10 +117,18 @@ _SWEEP_PLACEHOLDERS = (
 
 @dataclass(frozen=True)
 class RunSummary:
-    """CSV rows from the solvers that ran, plus any label mismatches."""
+    """CSV rows from the solvers that ran, plus any label mismatches.
+
+    ``experiment_a`` is the supplementary summary written to
+    ``correctness_summary.json``. It is ``None`` when ``--correctness 0``.
+    ``experiment_j`` is the content of ``astar_summary.json``. It is ``None``
+    under ``--no-sweeps``.
+    """
 
     rows: list[dict[str, str]]
     disagreements: tuple[str, ...]
+    experiment_a: dict | None = None
+    experiment_j: dict | None = None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -124,6 +144,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.repeats < 1:
         print("error: --repeats must be positive", file=sys.stderr)
         return 1
+    if args.scaling_replicates < 1:
+        print("error: --scaling-replicates must be positive", file=sys.stderr)
+        return 1
+    if args.astar_replicates < 1:
+        print("error: --astar-replicates must be positive", file=sys.stderr)
+        return 1
     try:
         summary = run(
             args.out,
@@ -133,16 +159,25 @@ def main(argv: list[str] | None = None) -> int:
             sweeps=not args.no_sweeps,
             timing_repeats=args.repeats,
             plots_dir=args.plots,
+            charger_counts=args.charger_counts,
+            scaling_replicates=args.scaling_replicates,
+            astar_replicates=args.astar_replicates,
         )
     except (InputError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     print(f"wrote {len(OUTPUT_FILES)} CSV files to {args.out}")
+    if summary.experiment_a is not None:
+        print(f"wrote {SUMMARY_FILE} to {args.out}")
+        print(format_report(summary.experiment_a))
+    if summary.experiment_j is not None:
+        print(f"wrote {ASTAR_SUMMARY_FILE} to {args.out}")
+        print(format_astar_report(summary.experiment_j))
     if not args.no_sweeps:
         print(f"wrote {len(MEASURED_PLOTS)} plots to {args.plots}")
     if summary.disagreements:
         joined = ", ".join(summary.disagreements)
-        print(f"error: label mismatch on {joined}", file=sys.stderr)
+        print(f"error: mismatch on {joined}", file=sys.stderr)
         return 1
     return 0
 
@@ -158,8 +193,16 @@ def run(
     plots_dir: Path | None = None,
     charger_counts: tuple[int, ...] = CHARGER_COUNTS,
     capacities: tuple[int, ...] = CAPACITIES,
+    scaling_replicates: int = SCALING_REPLICATES,
+    astar_replicates: int = SUITE_REPLICATES,
 ) -> RunSummary:
-    """Run the available solvers and write every Section 23 CSV."""
+    """Run the available solvers and write every Section 23 CSV.
+
+    A run with sweeps also writes ``charger_scaling_summary.json``, the
+    per-count aggregate of Experiment D, and ``astar_summary.json``, the
+    aggregate of the dedicated Experiment J benchmark. If any J pair disagrees,
+    ``astar_failures.json`` holds the graph and config of each such instance.
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
     sample = load_sample()
     tiny = tiny_instances(seed, tiny_count)
@@ -171,40 +214,76 @@ def run(
     sample_exact = _exact(sample, "A")
 
     correctness: list[dict[str, str]] = [sample_exact]
-    astar_rows = list(sample_pair)
+    astar_rows = [_with_note(row, "suite=S6; set=sample") for row in sample_pair]
     for instance in tiny:
         pair, exact_row, ok = _benchmark(instance, "A", run_exact=True)
         correctness.extend(pair)
         if exact_row is not None:
             correctness.append(exact_row)
-        astar_rows.extend(_retarget(row) for row in pair)
+        astar_rows.extend(_with_note(_retarget(row), "suite=S6; set=tiny") for row in pair)
         if not ok:
             disagreements.append(instance.instance_id)
 
     measured: dict[str, list[dict[str, str]]] = {}
+    astar_summary: dict | None = None
+    astar_failures: list[dict] = []
+    a_summary: dict | None = None
+    a_records: list[dict] = []
     if correctness_count:
-        added, failed = experiment_a(seed, correctness_count)
-        correctness.extend(added)
-        disagreements.extend(failed)
+        report = experiment_a_report(seed, correctness_count)
+        correctness.extend(report.rows)
+        disagreements.extend(report.failed)
+        a_summary = report.summary
+        a_records = report.records
     if sweeps:
         soc_rows, soc_failed = experiment_c(timing_repeats)
-        scale_rows, scale_failed = experiment_d(timing_repeats, charger_counts)
+        scale_rows, scale_failed = experiment_d(
+            timing_repeats,
+            charger_counts,
+            seed=seed,
+            replicates=scaling_replicates,
+        )
         capacity_rows, capacity_failed = experiment_e(timing_repeats, capacities)
+        astar = experiment_j_report(timing_repeats, seed=seed, replicates=astar_replicates)
         disagreements.extend(soc_failed)
         disagreements.extend(scale_failed)
         disagreements.extend(capacity_failed)
+        disagreements.extend(astar.failed)
         measured["soc_resolution.csv"] = soc_rows
         measured["charger_scaling.csv"] = scale_rows
         measured["battery_capacity.csv"] = capacity_rows
-        astar_rows.extend(journal_rows(scale_rows, soc_rows))
+        astar_rows.extend(astar.rows)
+        astar_summary = astar.summary
+        astar_failures = astar.failures
     else:
         for filename, experiment, algorithm, note in _SWEEP_PLACEHOLDERS:
             measured[filename] = [_unavailable(experiment, algorithm, note, seed)]
 
     write_csv(output_dir / "correctness.csv", correctness)
+    if a_summary is not None:
+        write_summary(output_dir / SUMMARY_FILE, a_summary, a_records)
+    else:
+        (output_dir / SUMMARY_FILE).unlink(missing_ok=True)  # skipped: no stale summary
     write_csv(output_dir / "astar_comparison.csv", astar_rows)
     for filename, rows in measured.items():
         write_csv(output_dir / filename, rows)
+    if sweeps:
+        summary_text = json.dumps(
+            summarize_scaling(measured["charger_scaling.csv"]), indent=2, sort_keys=True
+        )
+        (output_dir / SCALING_SUMMARY_FILE).write_text(summary_text + "\n", encoding="utf-8")
+    else:
+        (output_dir / SCALING_SUMMARY_FILE).unlink(missing_ok=True)
+    if astar_summary is not None:
+        astar_text = json.dumps(astar_summary, indent=2, sort_keys=True)
+        (output_dir / ASTAR_SUMMARY_FILE).write_text(astar_text + "\n", encoding="utf-8")
+    else:
+        (output_dir / ASTAR_SUMMARY_FILE).unlink(missing_ok=True)
+    failures_path = output_dir / ASTAR_FAILURES_FILE
+    if astar_failures:
+        failures_path.write_text(json.dumps(astar_failures, indent=2) + "\n", encoding="utf-8")
+    elif failures_path.exists():
+        failures_path.unlink()  # a rerun that passes must not leave an old failure behind
     for filename, experiment, algorithm, note in _PENDING:
         write_csv(
             output_dir / filename,
@@ -214,7 +293,12 @@ def run(
         charts = dict(measured)
         charts["astar_comparison.csv"] = astar_rows
         write_plots(charts, DEFAULT_PLOTS if plots_dir is None else plots_dir)
-    return RunSummary(sample_pair + correctness, tuple(disagreements))
+    return RunSummary(
+        sample_pair + correctness,
+        tuple(disagreements),
+        a_summary,
+        astar_summary,
+    )
 
 
 def _benchmark(
@@ -319,6 +403,20 @@ def _retarget(row: dict[str, str]) -> dict[str, str]:
     return retargeted
 
 
+def _with_note(row: dict[str, str], note: str) -> dict[str, str]:
+    """Copy a row and set its note. The S6 rows share a file with Experiment J's."""
+    tagged = dict(row)
+    tagged["note"] = f"{row['note']}; {note}" if row["note"] else note
+    return tagged
+
+
+def _counts(text: str) -> tuple[int, ...]:
+    try:
+        return tuple(int(part) for part in text.split(",") if part.strip())
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"not a comma-separated integer list: {text!r}") from exc
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run ChargePlan benchmarks and write results/.")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUTPUT, help="CSV directory")
@@ -332,6 +430,24 @@ def _parser() -> argparse.ArgumentParser:
         help="Experiment A graph count; 0 skips that suite",
     )
     parser.add_argument("--repeats", type=int, default=TIMING_REPEATS, help="timing repeats")
+    parser.add_argument(
+        "--charger-counts",
+        type=_counts,
+        default=CHARGER_COUNTS,
+        help="Experiment D station counts, comma separated (default 10,25,50,100; max 200)",
+    )
+    parser.add_argument(
+        "--scaling-replicates",
+        type=int,
+        default=SCALING_REPLICATES,
+        help="Experiment D station pools per count",
+    )
+    parser.add_argument(
+        "--astar-replicates",
+        type=int,
+        default=SUITE_REPLICATES,
+        help="Experiment J replicates per factor combination (36 combinations)",
+    )
     parser.add_argument(
         "--no-sweeps",
         action="store_true",

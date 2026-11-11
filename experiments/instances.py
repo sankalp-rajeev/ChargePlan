@@ -1,4 +1,4 @@
-"""Benchmark instances for the experiment runner.
+﻿"""Benchmark instances for the experiment runner.
 
 The Detroit–Chicago sample is the frozen file in ``data/synthetic``. The tiny
 suite is drawn from ``random.Random(seed)`` with seed 505 by default. Nodes are
@@ -19,7 +19,7 @@ outside them is recorded as ``SKIPPED`` and the exact solver is not called.
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from optimizer.model import InputError, discretize, haversine_miles, load_config, load_graph
@@ -29,17 +29,19 @@ SYNTHETIC = ROOT / "data" / "synthetic"
 
 DEFAULT_SEED = 505
 DEFAULT_TINY = 20
-CORRECTNESS_COUNT = 100
+CORRECTNESS_COUNT = 200
 EXACT_MAX_NODES = 8
 EXACT_MAX_CHARGERS = 5
 EXACT_MAX_CAPACITY_STEPS = 8
 SAMPLE_ID = "detroit-chicago"
-# Section 22 lists 200 stations. The runner stops at 100 so a config edit
-# cannot launch a larger uncontrolled search. Ten through 100 already shows
-# the scaling slope on this corridor.
+# Section 22 lists 200 stations. The default run stops at 100 because 200 costs
+# about three times as much as the other four counts together (see
+# experiments/README.md). 200 is the size of the
+# station pool, so it runs only when asked for with ``--charger-counts``, and
+# nothing larger can be built.
 CHARGER_COUNTS = (10, 25, 50, 100)
-CHARGER_SCALE_MAX = 100
-OMITTED_CHARGER_COUNT = 200
+CHARGER_SCALE_MAX = 200
+SCALING_REPLICATES = 10
 # Percentages of the 70 kWh sample pack, plus the 0.1 kWh reference.
 SOC_SAMPLE_STEPS = (14.0, 7.0, 3.5, 1.4, 0.7, 0.1)
 # 60%, 20%, 10%, and 1% of the 10 kWh rounding probe. 6 kWh is kept because
@@ -49,18 +51,22 @@ CAPACITIES = (40, 55, 70, 85, 100)
 CAPACITY_INITIAL_KWH = 30
 TIMING_REPEATS = 3
 _LENGTH_TOLERANCE_MILES = 1e-6
-_CORRIDOR_SLOTS = 100
-_CORRIDOR_SPAN_DEGREES = 4.0
-
 
 @dataclass(frozen=True)
 class Instance:
-    """One graph and trip config, plus the counts the CSV records."""
+    """One graph and trip config, plus the counts the CSV records.
+
+    ``meta`` is empty except for Experiments A and D. For A it names the
+    construction category and the properties the generator guarantees. For D it
+    holds the replicate, edge count, SOC capacity steps, and the certificate
+    minimum stops. It never reaches a solver and is not a CSV column.
+    """
 
     instance_id: str
     graph: dict
     config: dict
     seed: int | None
+    meta: dict = field(default_factory=dict)
 
     @property
     def node_count(self) -> int:
@@ -154,45 +160,38 @@ def _tiny_query(rng: random.Random, seed: int, index: int) -> Instance:
 
 
 def correctness_instances(seed: int, count: int) -> list[Instance]:
-    """Build Section 21 graphs: 4–8 nodes, 1–5 chargers, exact-legal capacity.
+    """Build the Experiment A suite: 4–8 nodes, 1–5 chargers, exact-legal capacity.
 
-    The generator uses its own ``random.Random(seed)``. It does not advance
-    the generator inside ``tiny_instances``, so the S6 tiny suite is unchanged.
-    The origin does not charge. Capacity steps shrink as the graph grows so
-    the exact solver stays on a bounded instance.
+    ``experiments.exact_suite`` owns the design. Each instance has its own
+    random stream, so the first ``n`` instances do not depend on ``count`` and
+    the S6 tiny suite is untouched.
     """
-    if count < 1:
-        raise InputError("correctness instance count must be positive")
-    rng = random.Random(seed)
-    instances = [_correctness_query(rng, seed, index) for index in range(count)]
-    for instance in instances:
-        if not 4 <= instance.node_count <= 8:
-            raise InputError(f"{instance.instance_id} has {instance.node_count} nodes")
-        if not 1 <= instance.charger_count <= 5:
-            raise InputError(f"{instance.instance_id} has {instance.charger_count} chargers")
-        reason = exact_block_reason(instance.graph, instance.config)
-        if reason is not None:
-            raise InputError(f"{instance.instance_id} violated the exact bound: {reason}")
-    return instances
+    from experiments.exact_suite import build_suite
+
+    return build_suite(seed, count)
 
 
-def scaling_instances(counts: tuple[int, ...] = CHARGER_COUNTS) -> list[Instance]:
-    """Place subsets of one fixed 100-station corridor between a fixed trip.
+def scaling_instances(
+    counts: tuple[int, ...] = CHARGER_COUNTS,
+    *,
+    seed: int = DEFAULT_SEED,
+    replicates: int = SCALING_REPLICATES,
+) -> list[Instance]:
+    """Build the Experiment D instances: matched subsets of seeded station pools.
 
-    Every count uses the same origin, destination, battery, and station
-    coordinates. Edges run to the next three selected stations, so a smaller
-    subset has longer hops as well as fewer nodes. Counts above
-    ``CHARGER_SCALE_MAX`` are rejected.
+    Each replicate has one pool, and a count is a prefix of it, so a station
+    keeps its coordinates and rate at every count. The trip and the vehicle are
+    the same for every instance. Counts above ``CHARGER_SCALE_MAX``, the pool
+    size, are rejected. ``experiments.scaling_suite`` owns the design.
     """
-    instances = []
+    from experiments.scaling_suite import build_scaling_suite
+
     for count in counts:
         if count < 1 or count > CHARGER_SCALE_MAX:
-            raise InputError(
-                f"charger count {count} is outside 1..{CHARGER_SCALE_MAX}; "
-                f"{OMITTED_CHARGER_COUNT} is intentionally not run"
-            )
-        instances.append(_corridor(count))
-    return instances
+            raise InputError(f"charger count {count} is outside 1..{CHARGER_SCALE_MAX}")
+    if len(set(counts)) != len(counts):
+        raise InputError("charger counts must be distinct")
+    return build_scaling_suite(seed, tuple(counts), replicates)
 
 
 def soc_instances(steps: tuple[float, ...], *, family: str, base: Instance) -> list[Instance]:
@@ -263,88 +262,6 @@ def capacity_instances(
         config["soc_step_kwh"] = 1
         instances.append(Instance(f"capacity-{capacity:03d}", sample.graph, config, None))
     return instances
-
-
-def _correctness_query(rng: random.Random, seed: int, index: int) -> Instance:
-    extra = rng.randint(2, 6)
-    charger_count = rng.randint(1, min(5, extra))
-    if extra >= 5:
-        capacity = rng.randint(3, 4)
-    else:
-        capacity = rng.randint(4, 6)
-    nodes = [
-        _node("origin", "origin", None, *_coordinate(index, 0)),
-        _node("destination", "destination", None, *_coordinate(index, 1)),
-    ]
-    for slot in range(extra):
-        rate = 60 if slot < charger_count and rng.random() < 0.5 else 30
-        if slot >= charger_count:
-            rate = None
-        lat, lon = _coordinate(index, 2 + slot)
-        nodes.append(_node(f"n{slot}", "charger", rate, lat, lon))
-    located = {node["id"]: node for node in nodes}
-    edges: list[dict] = []
-    for start in located:
-        for end in located:
-            if start != end and rng.random() < 0.45:
-                edges.append(_road(rng, located, start, end))
-    if not any(edge["from"] == "origin" for edge in edges):
-        edges.append(_road(rng, located, "origin", "destination"))
-    _require_straight_line(located, edges)
-    initial = rng.randint(0, capacity)
-    reserve = rng.randint(0, min(2, capacity))
-    config = {
-        "origin": "origin",
-        "destination": "destination",
-        "battery_capacity_kwh": capacity,
-        "initial_soc_kwh": initial,
-        "reserve_kwh": reserve,
-        "consumption_kwh_per_mile": 1,
-        "soc_step_kwh": 1,
-    }
-    return Instance(f"exact-{index:03d}", {"nodes": nodes, "edges": edges}, config, seed)
-
-
-def _corridor(count: int) -> Instance:
-    chosen = [int(i * _CORRIDOR_SLOTS / count) for i in range(count)]
-    origin = _node("origin", "origin", None, 42.0, -83.0)
-    destination = _node(
-        "destination",
-        "destination",
-        None,
-        42.0,
-        -83.0 + _CORRIDOR_SPAN_DEGREES,
-    )
-    chargers = []
-    for slot in chosen:
-        lon = -83.0 + _CORRIDOR_SPAN_DEGREES * (slot + 1) / (_CORRIDOR_SLOTS + 1)
-        rate = 150 if slot % 2 == 0 else 50
-        chargers.append(_node(f"c{slot}", "charger", rate, 42.0, lon))
-    nodes = [origin, *chargers, destination]
-    edges = []
-    for index, start in enumerate(nodes):
-        for end in nodes[index + 1 : index + 4]:
-            miles = haversine_miles(start["lat"], start["lon"], end["lat"], end["lon"])
-            edges.append(
-                {
-                    "from": start["id"],
-                    "to": end["id"],
-                    "distance_miles": miles,
-                    "drive_time_minutes": miles * 1.2,
-                }
-            )
-    located = {node["id"]: node for node in nodes}
-    _require_straight_line(located, edges)
-    config = {
-        "origin": "origin",
-        "destination": "destination",
-        "battery_capacity_kwh": 40,
-        "initial_soc_kwh": 30,
-        "reserve_kwh": 2,
-        "consumption_kwh_per_mile": 0.30,
-        "soc_step_kwh": 1,
-    }
-    return Instance(f"scale-{count:03d}", {"nodes": nodes, "edges": edges}, config, None)
 
 
 def _step_label(step: float) -> str:

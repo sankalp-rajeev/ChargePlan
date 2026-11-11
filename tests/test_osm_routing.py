@@ -14,8 +14,8 @@ pytest.importorskip("osmnx")
 DETROIT = {"lat": 42.3314, "lon": -83.0458}
 DEARBORN = {"lat": 42.3223, "lon": -83.1763}
 
-
-def test_road_metrics_osmnx_detroit_dearborn_with_fresh_cache(tmp_path: Path) -> None:
+@pytest.mark.network
+def test_road_metrics_osmnx_detroit_dearborn_fresh_cache(tmp_path: Path) -> None:
     """Fresh cache + backend='osmnx' must return real road metrics, not haversine."""
     cache = tmp_path / "osm_cache"
     cache.mkdir()
@@ -33,6 +33,7 @@ def test_road_metrics_osmnx_detroit_dearborn_with_fresh_cache(tmp_path: Path) ->
     )
 
     assert osm["backend"] == "osmnx"
+    assert osm["cached"] is False
     assert osm["distance_miles"] >= straight
     assert osm["drive_time_minutes"] > 0
     # Not the documented haversine stand-in (×1.25 @ 55 mph).
@@ -40,6 +41,7 @@ def test_road_metrics_osmnx_detroit_dearborn_with_fresh_cache(tmp_path: Path) ->
     assert osm["drive_time_minutes"] != pytest.approx(hav["drive_time_minutes"])
 
     cached = road_metrics(DETROIT, DEARBORN, cache, backend="osmnx")
-    assert cached["backend"] == "cache"
+    assert cached["backend"] == "osmnx"
+    assert cached["cached"] is True
     assert cached["distance_miles"] == osm["distance_miles"]
     assert cached["drive_time_minutes"] == osm["drive_time_minutes"]

@@ -1,4 +1,7 @@
-"""Experiment A, C, D, E, and J produce measured rows and plots."""
+"""Experiments C, D, E, and J produce measured rows and plots.
+
+Experiment A has its own file, ``test_exact_suite.py``.
+"""
 
 from __future__ import annotations
 
@@ -6,53 +9,21 @@ from pathlib import Path
 
 import pytest
 
-from experiments.instances import (
-    CHARGER_COUNTS,
-    CHARGER_SCALE_MAX,
-    CORRECTNESS_COUNT,
-    OMITTED_CHARGER_COUNT,
-    correctness_instances,
-    scaling_instances,
-)
+from experiments.instances import correctness_instances
 from experiments.metrics import read_csv
 from experiments.plots import MEASURED_PLOTS, OMITTED_PLOTS
 from experiments.run_all import run
 from experiments.sweeps import experiment_a, experiment_c, experiment_e
-from optimizer.model import InputError
 
 
-def test_experiment_a_graphs_match_the_section_21_shape() -> None:
-    first = correctness_instances(505, CORRECTNESS_COUNT)
-    second = correctness_instances(505, CORRECTNESS_COUNT)
-    assert len(first) == 100
-    assert [item.instance_id for item in first] == [item.instance_id for item in second]
-    assert first[0].graph["edges"] == second[0].graph["edges"]
-    assert correctness_instances(506, 4)[0].graph["edges"] != first[0].graph["edges"]
-    for instance in first:
+def test_experiment_a_keeps_its_row_wrapper_and_the_section_21_shape() -> None:
+    rows, failed = experiment_a(505, 40)
+    assert failed == ()
+    assert len([row for row in rows if row["algorithm"] == "exact"]) == 40
+    assert {row["agreement"] for row in rows} == {"true"}
+    for instance in correctness_instances(505, 40):
         assert 4 <= instance.node_count <= 8
         assert 1 <= instance.charger_count <= 5
-        assert instance.config["battery_capacity_kwh"] <= 6
-
-
-def test_experiment_a_agrees_on_one_hundred_graphs() -> None:
-    rows, failed = experiment_a(505, CORRECTNESS_COUNT)
-    assert failed == ()
-    exact = [row for row in rows if row["algorithm"] == "exact"]
-    assert len(exact) == 100
-    assert {row["agreement"] for row in rows} == {"true"}
-    assert {row["status"] for row in rows} <= {"FEASIBLE", "INFEASIBLE"}
-
-
-def test_charger_scaling_stops_at_one_hundred() -> None:
-    assert CHARGER_COUNTS[-1] == CHARGER_SCALE_MAX
-    assert OMITTED_CHARGER_COUNT not in CHARGER_COUNTS
-    with pytest.raises(InputError, match="200"):
-        scaling_instances((OMITTED_CHARGER_COUNT,))
-    small = scaling_instances((10, 25))
-    assert [item.charger_count for item in small] == [10, 25]
-    assert small[0].config["battery_capacity_kwh"] == small[1].config["battery_capacity_kwh"]
-    assert small[0].graph["nodes"][0]["lon"] == small[1].graph["nodes"][0]["lon"]
-    assert small[0].graph["nodes"][-1]["lon"] == small[1].graph["nodes"][-1]["lon"]
 
 
 def test_soc_error_is_the_gap_from_the_fine_reference() -> None:
@@ -116,6 +87,8 @@ def test_sweeps_write_measurements_plots_and_leave_h4_unavailable(
         plots_dir=plots,
         charger_counts=(10, 25),
         capacities=(40, 70),
+        scaling_replicates=2,
+        astar_replicates=1,
     )
     assert summary.disagreements == ()
     soc = read_csv(tmp_path / "soc_resolution.csv")
@@ -124,7 +97,23 @@ def test_sweeps_write_measurements_plots_and_leave_h4_unavailable(
     assert all(row["runtime_ms"] for row in soc)
     scaling = read_csv(tmp_path / "charger_scaling.csv")
     assert {row["chargers"] for row in scaling} == {"10", "25"}
-    _assert_astar_uses_no_more_states(scaling)
+    assert len(scaling) == 2 * 2 * 2  # replicates x counts x algorithms
+    assert {row["agreement"] for row in scaling} == {"true"}
+    assert (tmp_path / "charger_scaling_summary.json").is_file()
+    comparison = read_csv(tmp_path / "astar_comparison.csv")
+    dedicated = [row for row in comparison if "suite=J" in row["note"]]
+    assert len(dedicated) == 36 * 2  # one replicate x 36 factor combinations x 2 algorithms
+    assert {row["experiment"] for row in dedicated} == {"J"}
+    assert {row["agreement"] for row in dedicated} == {"true"}
+    # Experiment J measures its own instances. None of them is a D or C instance.
+    d_ids = {row["instance_id"] for row in scaling}
+    c_ids = {row["instance_id"] for row in soc}
+    assert d_ids.isdisjoint(row["instance_id"] for row in comparison)
+    assert c_ids.isdisjoint(row["instance_id"] for row in comparison)
+    assert not any("comparison=J" in row["note"] for row in comparison)
+    assert (tmp_path / "astar_summary.json").is_file()
+    assert not (tmp_path / "astar_failures.json").exists()
+    assert summary.experiment_j is not None
     greedy = read_csv(tmp_path / "greedy_comparison.csv")
     assert greedy[0]["status"] == "UNAVAILABLE"
     assert greedy[0]["total_time_minutes"] == ""
@@ -136,11 +125,3 @@ def test_sweeps_write_measurements_plots_and_leave_h4_unavailable(
     for name in MEASURED_PLOTS:
         header = (plots / name).read_bytes()[:8]
         assert header == b"\x89PNG\r\n\x1a\n"
-
-
-def _assert_astar_uses_no_more_states(rows: list[dict[str, str]]) -> None:
-    grouped: dict[str, dict[str, int]] = {}
-    for row in rows:
-        grouped.setdefault(row["instance_id"], {})[row["algorithm"]] = int(row["states_expanded"])
-    for algorithms in grouped.values():
-        assert algorithms["astar"] <= algorithms["label_setting"]
