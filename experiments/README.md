@@ -309,13 +309,78 @@ Plots. `states_astar_vs_labelsetting.png` is one point per instance, colored by 
 - Runtime comes from one machine and varies between runs. Expanded states, peak states, and the objectives are the reproducible measurements.
 - The geometry explanation rests on the recorded heuristic and route ratios and on rank correlations. No test of the cause was run.
 
+## S9 real-data runner
+
+`experiments/real_data.py` runs every algorithm on the real-data scenarios that H5 (`python -m data_pipeline`) writes, checks the answers against each other and against an independent plan checker, and writes the result files the visualizer reads. It is separate from `run_all`, which still writes its single `UNAVAILABLE` placeholder for `real_routes.csv` in `results/`.
+
+```text
+python -m experiments.real_data --scenarios data/processed --out results/real
+python -m experiments.real_data --scenarios data/processed --out results/real --only multi_stop_detroit_chicago sparse_detroit_chicago --repeats 5
+```
+
+`--scenarios` defaults to `data/processed` and `--out` to `results/real`. `--only` takes scenario ids. `--repeats` (default 3) is the number of runs per algorithm. The exit code is 0 only if every selected scenario passes.
+
+### Inputs
+
+One folder per scenario, taken in sorted order:
+
+| File | Required | Used for |
+| --- | --- | --- |
+| `canonical_graph.json` | yes | loaded and validated with `optimizer.model.load_graph` |
+| `trip_config.json` | yes | loaded with `load_config`, then `validate_query` |
+| `scenario_meta.json` | no | copied into the manifest; `category` and `road_backend` go into the CSV note |
+
+Every field of `scenario_meta.json` is optional. If it has `graph_sha256` or `config_sha256` (hex, with or without a `sha256:` prefix), each must equal the SHA-256 of that file as read. A mismatch fails that scenario with a message naming the key and both hashes. The files are also hashed again after loading, so a file edited mid-run is caught.
+
+### What runs
+
+Label-setting, A*, and greedy always run, through `optimizer.cli.run_algorithm`. Exact runs only inside the bound in `experiments/instances.py` (at most 8 nodes, 5 chargers, 8 capacity steps). Outside it the exact row is `SKIPPED` with the reason in the note, and the solver is not called. A 70 kWh battery at a 1 kWh step is 70 steps, so every H5 scenario at the default settings skips exact. Each algorithm runs `--repeats` times. The label, route, events, `states_expanded`, and `peak_states_stored` must be identical on every repeat or the scenario fails. The reported `runtime_ms` is the median.
+
+### Outputs
+
+```text
+<out>/<scenario_id>/label_setting.json
+                    astar.json
+                    greedy.json           (algorithm "greedy_frc" inside the file)
+                    exact.json            (only when exact ran)
+                    run_manifest.json
+<out>/real_routes.csv
+```
+
+Each result is validated against `algorithm_result.schema.json` before any of the scenario's files is written. `run_manifest.json` holds the scenario id, the SHA-256 of the graph and config as read, a copy of `scenario_meta.json` (or `null`), the git commit (`unknown` outside a checkout), the Python version, the platform, a UTC timestamp, the repeat count, the node, edge, and charger counts, and for each algorithm its status, time, stops, distance, `runtime_ms`, `states_expanded`, `peak_states_stored`, plan-check result, and cross-check outcomes.
+
+`real_routes.csv` uses the shared metrics header with experiment `I` and one row per algorithm per scenario. The note holds `road_backend=...` and `category=...` when the meta file has them, and the skip reason on an exact row. `agreement` is `true` on label-setting, A*, and exact rows when they matched, and blank on greedy rows (greedy is allowed to differ). The file is updated, not blindly appended: rows for the scenarios in this run replace any earlier rows for them, and other scenarios' rows stay. Re-running never duplicates a row, and `--only` leaves the rest of the file alone. A failed scenario contributes no rows and its old rows are removed.
+
+### Cross-checks
+
+A failure anywhere names the scenario and exits 1. The other scenarios still run. A failed scenario keeps only a `run_manifest.json` with `"status": "FAILED"` and its errors, and any `<algorithm>.json` left by an earlier run is deleted so the visualizer cannot pick up stale results.
+
+1. Label-setting and A* have the same status and exactly the same `(total_time_minutes, number_of_charging_stops, total_distance_miles)`.
+2. If exact ran, it matches label-setting the same way.
+3. Greedy is never strictly better than label-setting under the lexicographic order `(time, stops, distance)`. Greedy `INFEASIBLE` while label-setting is `FEASIBLE` is allowed, and is recorded as `infeasible_while_optimal_feasible` in the manifest and in the CSV note. Greedy `FEASIBLE` where label-setting is `INFEASIBLE` fails.
+4. Every result passes `experiments/plan_check.py`.
+
+The manifest also records whether A* expanded no more states than label-setting. That is information and not a check, because the heuristic guarantees the label and not a smaller search (see Experiment J).
+
+### Independent plan checker
+
+`experiments/plan_check.py` does not import `battery_state_optimizer`, `exact_solver`, `greedy_baseline`, `reconstruction`, or `optimizer.model`. It re-derives a result from its events, the graph, and the config with exact rational arithmetic: capacity and initial SOC floored to the step, reserve and each edge's energy ceiled; events form one walk from the origin to the destination over existing edges with the stated distances; `route_node_ids` equals that walk; SOC chains from the initial energy; no drive arrives below the reserve; no charge passes capacity or happens at a node without a charger; a charge is a new stop unless the event before it was a charge at the same node; total, driving, and charging time match the recomputed integer milliseconds within 1 ms and distance matches within 1e-6 miles; an `INFEASIBLE` result has no route and no events. `tests/test_plan_check.py` has a valid plan and one corrupted copy per rule, and also requires that the checker accepts all four solvers on the Detroit–Chicago sample and 50 seeded Experiment A graphs.
+
+### Road distances
+
+H5's default backend is `haversine`. Its road distances are straight-line distance times 1.25 at 55 mph, an estimate and not a routed distance. Treat every real-data time and distance as that estimate unless `scenario_meta.json` says another `road_backend`. The runner does not change the backend and records it only when the meta file names it.
+
+### Speed
+
+The solvers compute each edge's discretized energy and integer drive time once, before the search, instead of on every relaxation. Labels, status, `states_expanded`, and `peak_states_stored` are unchanged; `tests/test_precompute_equivalence.py` compares them with outputs recorded from the earlier code on the sample and 50 seeded graphs. On the 50-charger Experiment D instance (1,700 edges) a label-setting solve fell from about 0.28 s to 0.04 s.
+
 ## What does not run
 
 These files stay a single `UNAVAILABLE` row. The default run does not replace them with measurements, and it does not replace C, D, or E with that placeholder:
 
 - `greedy_comparison.csv` — FRC baseline, H4. No `greedy_vs_optimizer.png`.
 - `initial_soc.csv`, `charger_density.csv`, `charger_speed.csv` — Experiments F, G, and H (H9). No `feasibility_vs_charger_density.png`.
-- `real_routes.csv` — S9 and H5.
+- `real_routes.csv` in `results/` — `run_all` still writes the placeholder. Real rows come from `python -m experiments.real_data` (see S9 above) into `results/real/real_routes.csv`.
 
 `greedy_baseline.solve` is not called.
 
