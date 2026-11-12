@@ -5,7 +5,8 @@ Owned by Shannon (H3). Nodes use ids, types, coordinates, and
 
 ``build_canonical_graph`` wires H1/H2 outputs into a reduced optimizer graph:
 corridor candidates become charger nodes, and road metrics fill every directed
-forward edge whose energy stays within the experiment battery budget.
+edge (either direction) whose energy stays within the experiment battery
+budget, except edges into the origin or out of the destination.
 ``export_graph`` validates the frozen contract before writing.
 """
 
@@ -139,34 +140,38 @@ def build_edges(
     origin_id: str = "origin",
     destination_id: str = "destination",
 ) -> list[dict]:
-    """Build directed forward edges for every in-range corridor hop.
+    """Build a directed edge for every energy-reachable ordered node pair.
 
-    Nodes are ordered by progress from origin to destination. Each ordered
-    pair ``i -> j`` (``j > i``) is kept when ``road_metrics`` distance fits the
-    battery energy budget. This includes long feasible skips that a fixed
-    neighbor window would drop.
+    A pair ``a -> b`` is kept when its ``road_metrics`` distance fits the
+    battery energy budget. Both directions are considered, so a route may
+    double back (for example, to a fast charger just behind the origin, or
+    between two chargers whose corridor order differs from the driving order).
+
+    No edge enters the origin and none leaves the destination: a trip starts
+    at the origin and ends on arrival at the destination, so those edges can
+    never be part of a route.
     """
     by_id = {node["id"]: node for node in nodes}
     if origin_id not in by_id or destination_id not in by_id:
         raise ValueError("nodes must include the origin and destination ids")
 
+    # Corridor order only fixes a deterministic edge order in the output.
     ordered = _order_nodes_along_corridor(nodes, origin_id, destination_id)
     edges: list[dict] = []
-    seen: set[tuple[str, str]] = set()
 
-    for index, start in enumerate(ordered):
-        for end in ordered[index + 1 :]:
+    for start in ordered:
+        if start["id"] == destination_id:
+            continue
+        for end in ordered:
+            if end["id"] == start["id"] or end["id"] == origin_id:
+                continue
             edge = _road_edge(start, end, cache_dir, road_backend)
-            if not is_edge_within_battery(
+            if is_edge_within_battery(
                 float(edge["distance_miles"]),
                 max_battery_kwh=max_battery_kwh,
                 consumption_kwh_per_mile=consumption_kwh_per_mile,
             ):
-                continue
-            key = (edge["from"], edge["to"])
-            if key not in seen:
                 edges.append(edge)
-                seen.add(key)
 
     return edges
 
