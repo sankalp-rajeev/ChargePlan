@@ -24,6 +24,7 @@ import heapq
 import time
 from collections import defaultdict
 from decimal import ROUND_FLOOR, Decimal
+from typing import NamedTuple
 
 from optimizer.model import (
     InputError,
@@ -38,6 +39,15 @@ from optimizer.reconstruction import reconstruct
 
 State = tuple[str, int, int]
 Label = tuple[int, int, float]
+
+
+class _Road(NamedTuple):
+    """One outgoing edge with its discretized energy and integer drive time."""
+
+    to: str
+    distance_miles: float
+    energy_steps: int
+    drive_ms: int
 
 
 def solve(graph: dict, config: dict, *, use_heuristic: bool = False) -> dict:
@@ -59,13 +69,23 @@ def solve(graph: dict, config: dict, *, use_heuristic: bool = False) -> dict:
     if origin not in nodes or destination not in nodes:
         raise InputError("origin and destination must be nodes in the graph")
 
-    outgoing: dict[str, list[dict]] = defaultdict(list)
+    # Energy steps and drive milliseconds depend on the edge alone, so they are
+    # computed once here (Decimal arithmetic) and reused by every relaxation.
+    outgoing: dict[str, list[_Road]] = defaultdict(list)
     for edge in graph["edges"]:
         if edge["from"] not in nodes or edge["to"] not in nodes:
             raise InputError(
                 f"edge {edge['from']!r} -> {edge['to']!r} names an unknown node"
             )
-        outgoing[edge["from"]].append(edge)
+        outgoing[edge["from"]].append(
+            _Road(
+                edge["to"],
+                edge["distance_miles"],
+                edge_energy_steps(edge["distance_miles"], config),
+                minutes_to_ms(edge["drive_time_minutes"]),
+            )
+        )
+    charge_ms_by_rate: dict[float, int] = {}
 
     heuristic = _heuristic_ms(nodes, graph["edges"], destination) if use_heuristic else None
     start: State = (origin, initial, 0)
@@ -89,30 +109,30 @@ def solve(graph: dict, config: dict, *, use_heuristic: bool = False) -> dict:
             goal = state
             break
 
-        for edge in outgoing.get(location, ()):
-            energy = edge_energy_steps(edge["distance_miles"], config)
+        for road in outgoing.get(location, ()):
+            energy = road.energy_steps
             arrival = battery - energy
             if arrival < reserve:
                 continue
-            drive_ms = minutes_to_ms(edge["drive_time_minutes"])
+            drive_ms = road.drive_ms
             successor_label = (
                 label[0] + drive_ms,
                 label[1],
-                label[2] + edge["distance_miles"],
+                label[2] + road.distance_miles,
             )
             _relax(
                 best,
                 parent,
                 queue,
-                (edge["to"], arrival, 0),
+                (road.to, arrival, 0),
                 successor_label,
-                _priority(successor_label, edge["to"], heuristic),
+                _priority(successor_label, road.to, heuristic),
                 state,
                 {
                     "type": "drive",
                     "from": location,
-                    "to": edge["to"],
-                    "distance_miles": edge["distance_miles"],
+                    "to": road.to,
+                    "distance_miles": road.distance_miles,
                     "duration_ms": drive_ms,
                     "energy_steps": energy,
                     "soc_before_steps": battery,
@@ -122,7 +142,10 @@ def solve(graph: dict, config: dict, *, use_heuristic: bool = False) -> dict:
 
         rate = nodes[location]["charge_rate_kw"]
         if rate is not None and battery + 1 <= capacity:
-            charge_ms = minutes_to_ms(charge_step_minutes(delta_e, rate))
+            charge_ms = charge_ms_by_rate.get(rate)
+            if charge_ms is None:
+                charge_ms = minutes_to_ms(charge_step_minutes(delta_e, rate))
+                charge_ms_by_rate[rate] = charge_ms
             successor_label = (
                 label[0] + charge_ms,
                 label[1] + (1 if flag == 0 else 0),
