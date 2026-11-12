@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from optimizer import battery_state_optimizer, exact_solver, greedy_baseline
 from optimizer.cli import main
 
@@ -121,12 +119,15 @@ def test_solver_must_use_the_frozen_algorithm_name(tmp_path: Path, monkeypatch) 
     assert not out.exists()
 
 
-@pytest.mark.parametrize("algorithm", ["greedy"])
-def test_unimplemented_solver_exits_nonzero(tmp_path: Path, capsys, algorithm: str) -> None:
-    code, out = _run(tmp_path, algorithm)
-    assert code == 1
-    assert not out.exists()
-    assert "not implemented" in capsys.readouterr().err
+def test_greedy_frc_exits_zero_and_writes_result(tmp_path: Path) -> None:
+    code, out = _run(tmp_path, "greedy")
+    assert code == 0
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert written["algorithm"] == "greedy_frc"
+    assert written["status"] in {"FEASIBLE", "INFEASIBLE"}
+    if written["status"] == "INFEASIBLE":
+        assert written["route_node_ids"] == []
+        assert written["events"] == []
 
 
 def test_exact_tiny_query_exits_zero(tmp_path: Path) -> None:

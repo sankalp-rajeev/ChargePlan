@@ -5,7 +5,7 @@ On every instance below, A* returns the same feasibility and the same
 ``(time, stops, distance)`` label as plain label-setting, and it expands no
 more states. No processed real-data graph is in this repo yet (S9), so that
 comparison runs only when ``data/processed`` contains a canonical graph.
-T16, the greedy failure case, is still H4 and is not claimed here.
+T16, the greedy failure case, lives in ``test_synthetic.py``.
 """
 
 from __future__ import annotations

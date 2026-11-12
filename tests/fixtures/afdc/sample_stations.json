@@ -1,0 +1,153 @@
+{
+  "fuel_stations": [
+    {
+      "id": 1001,
+      "station_name": "Detroit DC Hub",
+      "latitude": 42.3314,
+      "longitude": -83.0458,
+      "access_code": "public",
+      "status_code": "E",
+      "fuel_type_code": "ELEC",
+      "ev_level1_evse_num": null,
+      "ev_level2_evse_num": 0,
+      "ev_dc_fast_num": 2,
+      "ev_network": "Electrify America",
+      "city": "Detroit",
+      "state": "MI",
+      "street_address": "1 Woodward Ave",
+      "ev_charging_units": [
+        {
+          "charging_level": "dc_fast",
+          "connectors": {
+            "J1772COMBO": {
+              "power_kw": 150.0,
+              "port_count": 2
+            },
+            "CHADEMO": {
+              "power_kw": 50.0,
+              "port_count": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 1002,
+      "station_name": "Ann Arbor Level 2",
+      "latitude": 42.2808,
+      "longitude": -83.743,
+      "access_code": "public",
+      "status_code": "E",
+      "fuel_type_code": "ELEC",
+      "ev_level2_evse_num": 2,
+      "ev_dc_fast_num": null,
+      "ev_network": "ChargePoint Network",
+      "city": "Ann Arbor",
+      "state": "MI",
+      "street_address": "100 Main St",
+      "ev_charging_units": [
+        {
+          "charging_level": "2",
+          "connectors": {
+            "J1772": {
+              "power_kw": null,
+              "port_count": 2
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 1003,
+      "station_name": "Private Depot",
+      "latitude": 42.5,
+      "longitude": -83.1,
+      "access_code": "private",
+      "status_code": "E",
+      "fuel_type_code": "ELEC",
+      "ev_level2_evse_num": 4,
+      "ev_dc_fast_num": 0,
+      "ev_network": "Non-Networked",
+      "city": "Detroit",
+      "state": "MI"
+    },
+    {
+      "id": 1004,
+      "station_name": "Planned Fast Site",
+      "latitude": 42.4,
+      "longitude": -83.2,
+      "access_code": "public",
+      "status_code": "P",
+      "fuel_type_code": "ELEC",
+      "ev_dc_fast_num": 4,
+      "ev_level2_evse_num": 0,
+      "city": "Detroit",
+      "state": "MI"
+    },
+    {
+      "id": 1005,
+      "station_name": "CNG Only",
+      "latitude": 42.3,
+      "longitude": -83.0,
+      "access_code": "public",
+      "status_code": "E",
+      "fuel_type_code": "CNG",
+      "ev_dc_fast_num": null,
+      "ev_level2_evse_num": null,
+      "city": "Detroit",
+      "state": "MI"
+    },
+    {
+      "id": 1006,
+      "station_name": "Missing Coords",
+      "latitude": null,
+      "longitude": null,
+      "access_code": "public",
+      "status_code": "E",
+      "fuel_type_code": "ELEC",
+      "ev_level2_evse_num": 1,
+      "city": "Detroit",
+      "state": "MI"
+    },
+    {
+      "id": 1007,
+      "station_name": "Level 1 Only",
+      "latitude": 42.35,
+      "longitude": -83.05,
+      "access_code": "public",
+      "status_code": "E",
+      "fuel_type_code": "ELEC",
+      "ev_level1_evse_num": 2,
+      "ev_level2_evse_num": null,
+      "ev_dc_fast_num": null,
+      "city": "Detroit",
+      "state": "MI"
+    },
+    {
+      "id": 1008,
+      "station_name": "Chicago DC No Power Field",
+      "latitude": 41.8781,
+      "longitude": -87.6298,
+      "access_code": "public",
+      "status_code": "E",
+      "fuel_type_code": "ELEC",
+      "ev_dc_fast_num": 1,
+      "ev_level2_evse_num": 0,
+      "ev_network": "eVgo Network",
+      "city": "Chicago",
+      "state": "IL",
+      "street_address": "200 W Madison St",
+      "ev_charging_units": [
+        {
+          "charging_level": "dc_fast",
+          "connectors": {
+            "J1772COMBO": {
+              "power_kw": null,
+              "port_count": 1
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

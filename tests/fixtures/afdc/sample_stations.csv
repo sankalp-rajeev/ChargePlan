@@ -1,0 +1,4 @@
+Fuel Type Code,Station Name,Street Address,City,State,Status Code,Access Code,EV Level1 EVSE Num,EV Level2 EVSE Num,EV DC Fast Count,EV Network,Latitude,Longitude,ID
+ELEC,Kalamazoo L2,200 E Michigan Ave,Kalamazoo,MI,E,public,,2,,Blink Network,42.2917,-85.5872,2001
+ELEC,Private CSV Site,9 Hidden Rd,Flint,MI,E,private,,1,,Non-Networked,43.0125,-83.6875,2002
+ELEC,Toledo Fast,1 Summit St,Toledo,OH,E,public,,0,4,Electrify America,41.6528,-83.5379,2003

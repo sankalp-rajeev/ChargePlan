@@ -2,9 +2,8 @@
 
 T1–T14 run label-setting and the exact solver and require the same
 feasibility and the same lexicographic label ``(time, stops, distance)``.
-T15 runs that same comparison between A* and label-setting. T16 still waits
-on the farthest-reachable-charger baseline (H4) and does not claim that
-comparison.
+T15 runs that same comparison between A* and label-setting. T16 checks that
+the farthest-reachable-charger baseline fails on a fixed adversarial graph.
 
 The 100-graph exact check uses ``random.Random(505)``. The geographic A*
 sweep lives in ``test_astar.py``.
@@ -182,7 +181,7 @@ def test_t2_one_mandatory_stop_keeps_the_reserve() -> None:
 
 
 def test_t3_optimizer_prefers_total_time_over_the_near_slow_charger() -> None:
-    """The slow charger sits closer to the destination. Greedy comparison waits on H4."""
+    """The slow charger sits closer to the destination; FRC picks it, optimizer does not."""
     # Road miles stay 5 / 20 / 12 / 20 so the 44-minute fast route is unchanged.
     # Slow is north of the origin, toward the destination. Fast is east, a detour
     # that is farther from the destination than the origin is.
@@ -198,13 +197,16 @@ def test_t3_optimizer_prefers_total_time_over_the_near_slow_charger() -> None:
             _edge("fast", "destination", 20, 20),
         ],
     )
-    label, _exact = _agree(graph, _config(initial_soc_kwh=20, battery_capacity_kwh=30))
+    config = _config(initial_soc_kwh=20, battery_capacity_kwh=30)
+    label, _exact = _agree(graph, config)
     assert label["route_node_ids"] == ["origin", "fast", "destination"]
     assert label["total_time_minutes"] == 44
     assert _straight(graph, "slow", "destination") < _straight(graph, "origin", "destination")
     assert _straight(graph, "fast", "destination") > _straight(graph, "origin", "destination")
-    with pytest.raises(NotImplementedError):
-        greedy_solve(graph, _config(initial_soc_kwh=20, battery_capacity_kwh=30))
+    greedy = greedy_solve(graph, config)
+    assert greedy["status"] == "FEASIBLE"
+    assert greedy["route_node_ids"] == ["origin", "slow", "destination"]
+    assert greedy["total_time_minutes"] > label["total_time_minutes"]
 
 
 def test_t4_partial_charge_beats_filling_the_battery() -> None:
@@ -421,8 +423,7 @@ def test_t14_stop_counting_for_one_visit_two_chargers_and_two_visits() -> None:
 def test_t15_astar_agrees_with_label_setting() -> None:
     """T15. A* returns the same label and expands no more states.
 
-    The 100-graph geographic sweep is in ``test_astar.py``. T16 stays
-    pending until H4 implements the farthest-reachable-charger baseline.
+    The 100-graph geographic sweep is in ``test_astar.py``.
     """
     direct = _graph(
         _origin(),
@@ -448,13 +449,12 @@ def _astar_agrees(graph: dict, config: dict) -> tuple[dict, dict]:
     return plain, guided
 
 
-def test_t16_greedy_failure_case_is_blocked_on_h4() -> None:
-    """T16 is not complete. The instance is fixed; FRC itself is H4.
+def test_t16_greedy_fails_when_only_charger_is_farther() -> None:
+    """T16. FRC returns INFEASIBLE while label-setting finds a one-stop plan.
 
     Origin is at lon -83, the destination at lon -85, and the only useful
     charger at lon -82. The charger is farther from the destination than the
-    origin is, so Section 12 returns INFEASIBLE once H4 exists. Label-setting
-    can charge there and finish.
+    origin is, so Section 12 refuses it. Label-setting can charge there and finish.
     """
     graph = _graph(
         {
@@ -490,8 +490,11 @@ def test_t16_greedy_failure_case_is_blocked_on_h4() -> None:
     assert label["route_node_ids"] == ["origin", "away", "destination"]
     assert label["number_of_charging_stops"] == 1
     assert _straight(graph, "away", "destination") > _straight(graph, "origin", "destination")
-    with pytest.raises(NotImplementedError):
-        greedy_solve(graph, config)
+    greedy = greedy_solve(graph, config)
+    assert greedy["status"] == "INFEASIBLE"
+    assert greedy["algorithm"] == "greedy_frc"
+    assert greedy["route_node_ids"] == []
+    assert greedy["events"] == []
 
 
 def test_edge_cases_zero_loop_exact_reserve_and_sample() -> None:

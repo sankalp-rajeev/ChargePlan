@@ -140,7 +140,7 @@ def test_runner_writes_measured_rows_and_leaves_the_rest_unavailable(tmp_path: P
     assert greedy[0]["status"] == "UNAVAILABLE"
     assert greedy[0]["algorithm"] == "greedy_frc"
     assert greedy[0]["total_time_minutes"] == ""
-    assert "H4" in greedy[0]["note"]
+    assert "H9" in greedy[0]["note"]
     real = read_csv(tmp_path / "real_routes.csv")
     assert real[0]["status"] == "UNAVAILABLE"
     assert "S9" in real[0]["note"]
@@ -252,8 +252,6 @@ def test_missing_sample_and_bad_arguments_are_errors(
         == 1
     )
     assert main(["--tiny", "0"]) == 1
-    with pytest.raises(InputError, match="H4"):
-        solve_named("greedy", {"nodes": [], "edges": []}, {})
     with pytest.raises(InputError, match="unknown algorithm"):
         solve_named("not-a-solver", {"nodes": [], "edges": []}, {})
 
