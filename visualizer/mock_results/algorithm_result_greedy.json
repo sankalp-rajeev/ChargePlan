@@ -1,0 +1,67 @@
+{
+  "status": "FEASIBLE",
+  "algorithm": "greedy_frc",
+  "total_time_minutes": 344.1,
+  "driving_time_minutes": 291.3,
+  "charging_time_minutes": 52.8,
+  "total_distance_miles": 315.2,
+  "number_of_charging_stops": 2,
+  "soc_step_kwh": 1.0,
+  "route_node_ids": [
+    "origin",
+    "station_1",
+    "station_2",
+    "destination"
+  ],
+  "events": [
+    {
+      "type": "drive",
+      "from": "origin",
+      "to": "station_1",
+      "distance_miles": 55.2,
+      "duration_minutes": 51.3,
+      "energy_kwh_discretized": 17.0,
+      "soc_before_kwh": 54.0,
+      "soc_after_kwh": 37.0
+    },
+    {
+      "type": "charge",
+      "station": "station_1",
+      "soc_before_kwh": 37.0,
+      "soc_after_kwh": 43.0,
+      "duration_minutes": 2.4
+    },
+    {
+      "type": "drive",
+      "from": "station_1",
+      "to": "station_2",
+      "distance_miles": 120.0,
+      "duration_minutes": 110.0,
+      "energy_kwh_discretized": 36.0,
+      "soc_before_kwh": 43.0,
+      "soc_after_kwh": 7.0
+    },
+    {
+      "type": "charge",
+      "station": "station_2",
+      "soc_before_kwh": 7.0,
+      "soc_after_kwh": 49.0,
+      "duration_minutes": 50.4
+    },
+    {
+      "type": "drive",
+      "from": "station_2",
+      "to": "destination",
+      "distance_miles": 140.0,
+      "duration_minutes": 130.0,
+      "energy_kwh_discretized": 42.0,
+      "soc_before_kwh": 49.0,
+      "soc_after_kwh": 7.0
+    }
+  ],
+  "metrics": {
+    "runtime_ms": 0.1327499994658865,
+    "states_expanded": 3,
+    "peak_states_stored": 3
+  }
+}

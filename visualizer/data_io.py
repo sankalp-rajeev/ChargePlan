@@ -21,20 +21,20 @@ class VisualizerInputError(ValueError):
 
 def load_graph(path: str | Path) -> dict:
     """Load a ``canonical_graph.json`` file and validate it against the schema."""
-    return _load(path, "canonical_graph.schema.json")
+    return load(path, "canonical_graph.schema.json")
 
 
 def load_result(path: str | Path) -> dict:
     """Load an ``algorithm_result.json`` file and validate it against the schema."""
-    return _load(path, "algorithm_result.schema.json")
+    return load(path, "algorithm_result.schema.json")
 
 
 def load_trip_config(path: str | Path) -> dict:
     """Load a ``trip_config.json`` file and validate it against the schema."""
-    return _load(path, "trip_config.schema.json")
+    return load(path, "trip_config.schema.json")
 
 
-def _load(path: str | Path, schema_name: str) -> dict:
+def load(path: str | Path, schema_name: str) -> dict:
     try:
         payload = json.loads(Path(path).read_text(encoding="utf-8"))
     except OSError as exc:

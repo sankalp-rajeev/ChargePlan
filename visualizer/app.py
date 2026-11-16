@@ -14,9 +14,12 @@ optional ``--trip`` file (``trip_config.json``) adds percent-of-battery values a
 the capacity and reserve lines to the SOC panels.
 
 The page shows the route map (H6), the trip summary, the SOC chart, and the
-drive/charge timeline (H7).
+drive/charge timeline (H7), plus the greedy versus optimized comparison (H8).
 
-TODO: the comparison panel (H8).
+The comparison reads a second precomputed file, the ``greedy_frc`` baseline
+result for the same trip. ``--greedy`` or the sidebar sets it. When left blank
+the app looks for ``algorithm_result_greedy.json`` next to the result file. The
+main result is the optimized side.
 """
 
 from __future__ import annotations
@@ -29,17 +32,66 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_GRAPH = ROOT / "data" / "synthetic" / "canonical_graph.json"
 DEFAULT_RESULT = ROOT / "visualizer" / "mock_results" / "algorithm_result.json"
+GREEDY_SIBLING = "algorithm_result_greedy.json"
 MAP_HEIGHT = 650
 SUMMARY_COLUMNS = 4
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace:
+def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="python -m visualizer.app")
     parser.add_argument("--graph", default=str(DEFAULT_GRAPH), help="canonical_graph.json")
     parser.add_argument("--result", default=str(DEFAULT_RESULT), help="algorithm_result.json")
+    parser.add_argument(
+        "--greedy",
+        default="",
+        help="greedy_frc algorithm_result.json for the comparison (optional)",
+    )
     parser.add_argument("--trip", default="", help="trip_config.json (optional)")
     args, _unknown = parser.parse_known_args(argv)
     return args
+
+
+def find_greedy_result(result_path: str, greedy_path: str) -> Path | None:
+    """Return the greedy baseline file to compare against, or ``None`` when there is none.
+
+    An explicit ``greedy_path`` wins. Otherwise use ``algorithm_result_greedy.json`` in
+    the same folder as the result file, if it exists.
+    """
+    if greedy_path.strip():
+        return Path(greedy_path.strip())
+    sibling = Path(result_path).parent / GREEDY_SIBLING
+    return sibling if sibling.is_file() else None
+
+
+def render_comparison_panel(st, result: dict, greedy_path: Path | None) -> None:
+    from visualizer.comparison import (
+        GREEDY_ALGORITHM,
+        comparison_table,
+        render_comparison,
+    )
+    from visualizer.data_io import VisualizerInputError, load_result
+
+    st.subheader("Greedy vs optimized")
+    if result["algorithm"] == GREEDY_ALGORITHM:
+        st.info(
+            "The main result is the greedy baseline. Load an optimizer result "
+            "(label_setting, astar, or exact) as the main result to compare."
+        )
+        return
+    if greedy_path is None:
+        st.info(
+            "No greedy baseline result to compare. Set the greedy result in the sidebar, "
+            f"or put {GREEDY_SIBLING} next to the result file."
+        )
+        return
+    try:
+        greedy = load_result(greedy_path)
+        comparison = render_comparison(greedy, result)
+    except VisualizerInputError as exc:
+        st.error(str(exc))
+        return
+    getattr(st, comparison["severity"])(comparison["verdict"])
+    st.table(comparison_table(comparison))
 
 
 def run_app(argv: list[str]) -> None:
@@ -64,7 +116,7 @@ def run_app(argv: list[str]) -> None:
         render_timeline_diagram,
     )
 
-    args = _parse_args(argv)
+    args = parse_args(argv)
     st.set_page_config(page_title="ChargePlan", layout="wide")
     st.title("ChargePlan")
 
@@ -76,6 +128,12 @@ def run_app(argv: list[str]) -> None:
             "Trip config (trip_config.json, optional)",
             value=args.trip,
             help="Adds percent of battery, the capacity line, and the reserve line.",
+        )
+        greedy_input = st.text_input(
+            "Greedy result (greedy_frc, optional)",
+            value=args.greedy,
+            help="Baseline result for the comparison. Blank uses algorithm_result_greedy.json "
+            "next to the result file when it exists.",
         )
 
     try:
@@ -104,6 +162,8 @@ def run_app(argv: list[str]) -> None:
         ):
             column.metric(label, value)
 
+    render_comparison_panel(st, result, find_greedy_result(result_path, greedy_input))
+
     if not result["events"]:
         st.info("This result has no drive or charge events, so there is no SOC chart or timeline.")
         return
@@ -125,14 +185,14 @@ def run_app(argv: list[str]) -> None:
 def main() -> None:
     """Start the visualizer."""
     argv = sys.argv[1:]
-    if _inside_streamlit():
+    if inside_streamlit():
         run_app(argv)
         return
     command = [sys.executable, "-m", "streamlit", "run", str(Path(__file__).resolve()), "--", *argv]
     raise SystemExit(subprocess.call(command, cwd=ROOT))
 
 
-def _inside_streamlit() -> bool:
+def inside_streamlit() -> bool:
     try:
         from streamlit.runtime.scriptrunner import get_script_run_ctx
     except ImportError:
