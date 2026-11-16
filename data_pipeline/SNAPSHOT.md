@@ -55,9 +55,10 @@ metrics = road_metrics(origin, destination, cache_dir=".osm_cache")
 # metrics["distance_miles"], metrics["drive_time_minutes"]
 ```
 
-`road_metrics` prefers a cache hit, then OSMnx when installed (`pip install osmnx`),
-otherwise a haversine × 1.25 estimate at 55 mph. Edges longer than
-`100 kWh / 0.30 kWh/mi` are dropped by `filter_edges_by_battery` (Experiment E max).
+`road_metrics` prefers a cache hit, then OSMnx when installed
+(`pip install 'chargeplan[roads]'`), otherwise a haversine × 1.25 estimate at
+55 mph. Edges longer than `100 kWh / 0.30 kWh/mi` are dropped by
+`filter_edges_by_battery` (Experiment E max).
 
 ## H3 — export `canonical_graph.json`
 
@@ -82,6 +83,8 @@ rules (unique ids, known endpoints, road distance ≥ straight-line) before writ
 
 ## H5 — real-data trip scenarios
 
+Scenarios under `data/processed/` are gitignored and regenerable:
+
 ```bash
 python -m data_pipeline \
   --snapshot data/raw/afdc_ev_midwest_2026-11-09.json \
@@ -89,13 +92,25 @@ python -m data_pipeline \
   --backend haversine
 ```
 
+Optional: `--only multi_stop_detroit_chicago sparse_detroit_chicago` to build a
+subset. Use `--backend osmnx` after `pip install 'chargeplan[roads]'` for OSM
+routing (requires network / Overpass).
+
 Each scenario directory contains `canonical_graph.json`, `trip_config.json`, and
 `scenario_meta.json`:
 
-| Scenario id | Category |
-| --- | --- |
-| `no_charge_detroit_ann_arbor` | no-charge |
-| `one_stop_detroit_cleveland` | one-stop |
-| `multi_stop_detroit_chicago` | multi-stop |
-| `mixed_speeds_detroit_chicago` | mixed charger speeds |
-| `sparse_detroit_chicago` | sparse chargers |
+| Scenario id | Category | Station selection |
+| --- | --- | --- |
+| `no_charge_detroit_ann_arbor` | no-charge | corridor subsample |
+| `one_stop_detroit_cleveland` | one-stop | corridor subsample |
+| `multi_stop_detroit_chicago` | multi-stop | **DC-fast only** (avoids Level 2–dominated greedy times) |
+| `mixed_speeds_detroit_chicago` | mixed charger speeds | interleaved DC-fast + Level 2 |
+| `sparse_detroit_chicago` | sparse chargers | small evenly spaced subset |
+
+`scenario_meta.json` records provenance used by the S9 runner:
+
+- `road_backend` (`haversine` or `osmnx`)
+- `edge_backend_counts` (`haversine` / `osmnx` edge totals)
+- `afdc_snapshot_file` and `afdc_snapshot_date`
+- `graph_sha256` / `config_sha256` of the written JSON files
+- `fallback_rate_charger_count` (charger nodes that used an AFDC fallback kW)

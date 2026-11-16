@@ -151,6 +151,29 @@ def build_edges(
     at the origin and ends on arrival at the destination, so those edges can
     never be part of a route.
     """
+    edges, _counts = build_edges_with_backend_counts(
+        nodes,
+        cache_dir,
+        road_backend=road_backend,
+        max_battery_kwh=max_battery_kwh,
+        consumption_kwh_per_mile=consumption_kwh_per_mile,
+        origin_id=origin_id,
+        destination_id=destination_id,
+    )
+    return edges
+
+
+def build_edges_with_backend_counts(
+    nodes: list[dict],
+    cache_dir: str | Path,
+    *,
+    road_backend: Literal["auto", "osmnx", "haversine"] = "auto",
+    max_battery_kwh: float = DEFAULT_MAX_BATTERY_KWH,
+    consumption_kwh_per_mile: float = DEFAULT_CONSUMPTION_KWH_PER_MILE,
+    origin_id: str = "origin",
+    destination_id: str = "destination",
+) -> tuple[list[dict], dict[str, int]]:
+    """Like ``build_edges``, also returning how many edges used each road backend."""
     by_id = {node["id"]: node for node in nodes}
     if origin_id not in by_id or destination_id not in by_id:
         raise ValueError("nodes must include the origin and destination ids")
@@ -158,6 +181,7 @@ def build_edges(
     # Corridor order only fixes a deterministic edge order in the output.
     ordered = _order_nodes_along_corridor(nodes, origin_id, destination_id)
     edges: list[dict] = []
+    edge_backend_counts = {"haversine": 0, "osmnx": 0}
 
     for start in ordered:
         if start["id"] == destination_id:
@@ -165,15 +189,16 @@ def build_edges(
         for end in ordered:
             if end["id"] == start["id"] or end["id"] == origin_id:
                 continue
-            edge = _road_edge(start, end, cache_dir, road_backend)
+            edge, backend = _road_edge(start, end, cache_dir, road_backend)
             if is_edge_within_battery(
                 float(edge["distance_miles"]),
                 max_battery_kwh=max_battery_kwh,
                 consumption_kwh_per_mile=consumption_kwh_per_mile,
             ):
                 edges.append(edge)
+                edge_backend_counts[backend] += 1
 
-    return edges
+    return edges, edge_backend_counts
 
 
 def build_edges_neighbor_limited(
@@ -210,13 +235,15 @@ def build_edges_neighbor_limited(
             if end_index >= len(ordered):
                 break
             end = ordered[end_index]
-            edge = _road_edge(start, end, cache_dir, road_backend)
+            edge, _backend = _road_edge(start, end, cache_dir, road_backend)
             key = (edge["from"], edge["to"])
             if key not in seen:
                 edges.append(edge)
                 seen.add(key)
 
-    direct = _road_edge(by_id[origin_id], by_id[destination_id], cache_dir, road_backend)
+    direct, _backend = _road_edge(
+        by_id[origin_id], by_id[destination_id], cache_dir, road_backend
+    )
     key = (direct["from"], direct["to"])
     if key not in seen:
         edges.append(direct)
@@ -241,8 +268,13 @@ def build_canonical_graph(
     consumption_kwh_per_mile: float = DEFAULT_CONSUMPTION_KWH_PER_MILE,
     origin_id: str = "origin",
     destination_id: str = "destination",
+    stats_out: dict[str, Any] | None = None,
 ) -> dict:
-    """Select corridor candidates and assemble a validated canonical graph dict."""
+    """Select corridor candidates and assemble a validated canonical graph dict.
+
+    When ``stats_out`` is provided, it is filled with ``edge_backend_counts``
+    (``haversine`` / ``osmnx`` totals) and ``road_backend_requested`` for H5 meta.
+    """
     candidates = select_candidates(
         stations,
         origin,
@@ -264,7 +296,7 @@ def build_canonical_graph(
         origin_id=origin_id,
         destination_id=destination_id,
     )
-    edges = build_edges(
+    edges, edge_backend_counts = build_edges_with_backend_counts(
         nodes,
         cache_dir,
         road_backend=road_backend,
@@ -274,6 +306,10 @@ def build_canonical_graph(
         destination_id=destination_id,
     )
     graph = {"nodes": nodes, "edges": edges}
+    if stats_out is not None:
+        stats_out.clear()
+        stats_out["edge_backend_counts"] = dict(edge_backend_counts)
+        stats_out["road_backend_requested"] = road_backend
     validate_canonical_graph(graph)
     return graph
 
@@ -301,14 +337,18 @@ def _road_edge(
     end: dict,
     cache_dir: str | Path,
     road_backend: Literal["auto", "osmnx", "haversine"],
-) -> dict:
+) -> tuple[dict, Literal["osmnx", "haversine"]]:
     metrics = road_metrics(start, end, cache_dir, backend=road_backend)
-    return {
+    backend = metrics["backend"]
+    if backend not in ("osmnx", "haversine"):
+        raise RuntimeError(f"unexpected routing backend {backend!r}")
+    edge = {
         "from": start["id"],
         "to": end["id"],
         "distance_miles": float(metrics["distance_miles"]),
         "drive_time_minutes": float(metrics["drive_time_minutes"]),
     }
+    return edge, backend
 
 
 def _order_nodes_along_corridor(
