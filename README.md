@@ -32,7 +32,7 @@ Shannon edits `optimizer/greedy_baseline.py` and does not edit the other files u
 python -m pip install -r requirements.txt
 make test            # pytest, including schema checks
 make experiments     # python -m experiments.run_all
-make demo            # python -m visualizer.app (stub)
+make demo            # python -m visualizer.app (Streamlit route map, H6)
 ```
 
 Shared optimizer entry point:
