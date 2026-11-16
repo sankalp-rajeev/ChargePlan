@@ -11,7 +11,7 @@ import pytest
 
 from experiments.instances import correctness_instances
 from experiments.metrics import read_csv
-from experiments.plots import MEASURED_PLOTS, OMITTED_PLOTS
+from experiments.plots import MEASURED_PLOTS
 from experiments.run_all import run
 from experiments.sweeps import experiment_a, experiment_c, experiment_e
 
@@ -67,7 +67,7 @@ def test_capacity_sweep_keeps_the_roads_and_the_initial_soc() -> None:
     assert {row["agreement"] for row in rows} == {"true"}
 
 
-def test_sweeps_write_measurements_plots_and_leave_h4_unavailable(
+def test_sweeps_write_measurements_and_plots(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -89,6 +89,9 @@ def test_sweeps_write_measurements_plots_and_leave_h4_unavailable(
         capacities=(40, 70),
         scaling_replicates=2,
         astar_replicates=1,
+        greedy_replicates=1,
+        density_replicates=1,
+        speed_replicates=1,
     )
     assert summary.disagreements == ()
     soc = read_csv(tmp_path / "soc_resolution.csv")
@@ -115,13 +118,20 @@ def test_sweeps_write_measurements_plots_and_leave_h4_unavailable(
     assert not (tmp_path / "astar_failures.json").exists()
     assert summary.experiment_j is not None
     greedy = read_csv(tmp_path / "greedy_comparison.csv")
-    assert greedy[0]["status"] == "UNAVAILABLE"
-    assert greedy[0]["total_time_minutes"] == ""
+    assert {row["algorithm"] for row in greedy} == {"label_setting", "greedy_frc"}
+    assert {row["experiment"] for row in greedy} == {"B"}
+    assert len(greedy) == 54 * 2  # layouts x speeds x capacities x SOCs, one replicate
+    assert {row["agreement"] for row in greedy} == {"true"}
+    assert len(read_csv(tmp_path / "initial_soc.csv")) == 5 * 2
+    assert len(read_csv(tmp_path / "charger_density.csv")) == 10 * 2
+    assert len(read_csv(tmp_path / "charger_speed.csv")) == 4 * 2
+    assert (tmp_path / "greedy_summary.json").is_file()
+    assert summary.greedy is not None and "I" not in summary.greedy
     real = read_csv(tmp_path / "real_routes.csv")
-    assert real[0]["status"] == "UNAVAILABLE"
+    assert real[0]["status"] == "UNAVAILABLE"  # no scenario directory was given
     written = {path.name for path in plots.iterdir()}
     assert written == set(MEASURED_PLOTS)
-    assert set(OMITTED_PLOTS).isdisjoint(written)
+    assert {"greedy_vs_optimizer.png", "feasibility_vs_charger_density.png"} <= written
     for name in MEASURED_PLOTS:
         header = (plots / name).read_bytes()[:8]
         assert header == b"\x89PNG\r\n\x1a\n"

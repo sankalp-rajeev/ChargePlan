@@ -64,6 +64,7 @@ STALE_SUMMARIES = (
     "charger_scaling_summary.json",
     "astar_summary.json",
     "astar_failures.json",
+    "greedy_summary.json",
 )
 
 
@@ -73,7 +74,7 @@ def _plant_stale_summaries(directory: Path) -> None:
 
 
 def test_skipped_experiments_leave_no_stale_summary_files(tmp_path: Path) -> None:
-    # --correctness 0 and --no-sweeps skip A, D, and J, so none of their summaries may survive.
+    # --correctness 0 and --no-sweeps skip A, D, J, and B/F/G/H: no summary of theirs may survive.
     _plant_stale_summaries(tmp_path)
     run(tmp_path, seed=505, tiny_count=1, correctness_count=0, sweeps=False)
     assert {path.name for path in tmp_path.iterdir()} == set(OUTPUT_FILES)
@@ -140,7 +141,12 @@ def test_runner_writes_measured_rows_and_leaves_the_rest_unavailable(tmp_path: P
     assert greedy[0]["status"] == "UNAVAILABLE"
     assert greedy[0]["algorithm"] == "greedy_frc"
     assert greedy[0]["total_time_minutes"] == ""
-    assert "H9" in greedy[0]["note"]
+    assert "--no-sweeps" in greedy[0]["note"]
+    pending = (("initial_soc.csv", "F"), ("charger_density.csv", "G"), ("charger_speed.csv", "H"))
+    for name, experiment in pending:
+        rows = read_csv(tmp_path / name)
+        assert [row["status"] for row in rows] == ["UNAVAILABLE"]
+        assert rows[0]["experiment"] == experiment
     real = read_csv(tmp_path / "real_routes.csv")
     assert real[0]["status"] == "UNAVAILABLE"
     assert "S9" in real[0]["note"]

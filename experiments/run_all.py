@@ -9,8 +9,12 @@ and Experiments C, D, E, and J. Experiment J builds its own instances and
 shares no rows with D or C. Its rows and the S6 rows both land in
 ``astar_comparison.csv`` and are told apart by the note (``suite=J`` or
 ``suite=S6``). Exact search runs on the S6 tiny graphs and
-on Experiment A, and only inside the S6 bound. The greedy baseline, Experiments
-F through I, and real-data routes stay ``UNAVAILABLE``.
+on Experiment A, and only inside the S6 bound. Experiments B, F, G, and H
+(``experiments.greedy_comparison``) compare the optimizer with the FRC baseline
+on seeded synthetic corridors, and Experiment I runs the H5 scenarios under
+``data/processed``. The sweeps flag skips B, F, G, and H. Experiment I is
+cheap, so it runs whenever its scenario directory exists and is
+``UNAVAILABLE`` otherwise.
 """
 
 from __future__ import annotations
@@ -26,6 +30,20 @@ from experiments.astar_summary import FAILURES_FILE as ASTAR_FAILURES_FILE
 from experiments.astar_summary import SUMMARY_FILE as ASTAR_SUMMARY_FILE
 from experiments.astar_summary import format_report as format_astar_report
 from experiments.correctness import SUMMARY_FILE, format_report, write_summary
+from experiments.greedy_comparison import (
+    DEFAULT_SCENARIOS,
+    FILES,
+    Comparison,
+    experiment_b,
+    experiment_f,
+    experiment_g,
+    experiment_h,
+    experiment_i,
+    summarize,
+)
+from experiments.greedy_comparison import SUMMARY_FILE as GREEDY_SUMMARY_FILE
+from experiments.greedy_comparison import format_report as format_greedy_report
+from experiments.greedy_suite import DENSITY_REPLICATES, GREEDY_REPLICATES, H_REPLICATES
 from experiments.instances import (
     CAPACITIES,
     CHARGER_COUNTS,
@@ -59,41 +77,32 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "results"
 DEFAULT_PLOTS = ROOT / "plots"
 
-_PENDING = (
+# Used only by ``--no-sweeps``. The default run writes measured rows instead.
+SWEEP_PLACEHOLDERS = (
     (
         "greedy_comparison.csv",
         "B",
         "greedy_frc",
-        "Experiment B (optimizer vs FRC) is owned by H9 and was not run.",
+        "Experiment B (optimizer vs FRC) skipped by --no-sweeps.",
     ),
     (
         "initial_soc.csv",
         "F",
         "",
-        "The initial-SOC sweep is Experiment F (H9). No comparison was run.",
+        "Initial-SOC sweep (Experiment F) skipped by --no-sweeps.",
     ),
     (
         "charger_density.csv",
         "G",
         "",
-        "The charger-density sweep is Experiment G (H9). No comparison was run.",
+        "Charger-density sweep (Experiment G) skipped by --no-sweeps.",
     ),
     (
         "charger_speed.csv",
         "H",
         "",
-        "The charger-speed sweep is Experiment H (H9). No comparison was run.",
+        "Charger-speed sweep (Experiment H) skipped by --no-sweeps.",
     ),
-    (
-        "real_routes.csv",
-        "I",
-        "",
-        "No real-data benchmark is configured (S9, H5). Experiment I was not run.",
-    ),
-)
-
-# Used only by ``--no-sweeps``. The default run writes measured rows instead.
-_SWEEP_PLACEHOLDERS = (
     (
         "soc_resolution.csv",
         "C",
@@ -122,13 +131,15 @@ class RunSummary:
     ``experiment_a`` is the supplementary summary written to
     ``correctness_summary.json``. It is ``None`` when ``--correctness 0``.
     ``experiment_j`` is the content of ``astar_summary.json``. It is ``None``
-    under ``--no-sweeps``.
+    under ``--no-sweeps``. ``greedy`` is the content of ``greedy_summary.json``
+    (Experiments B, F, G, H, and I), also ``None`` under ``--no-sweeps``.
     """
 
     rows: list[dict[str, str]]
     disagreements: tuple[str, ...]
     experiment_a: dict | None = None
     experiment_j: dict | None = None
+    greedy: dict | None = None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -150,6 +161,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.astar_replicates < 1:
         print("error: --astar-replicates must be positive", file=sys.stderr)
         return 1
+    if min(args.greedy_replicates, args.density_replicates, args.speed_replicates) < 1:
+        print("error: replicate counts must be positive", file=sys.stderr)
+        return 1
     try:
         summary = run(
             args.out,
@@ -162,6 +176,10 @@ def main(argv: list[str] | None = None) -> int:
             charger_counts=args.charger_counts,
             scaling_replicates=args.scaling_replicates,
             astar_replicates=args.astar_replicates,
+            greedy_replicates=args.greedy_replicates,
+            density_replicates=args.density_replicates,
+            speed_replicates=args.speed_replicates,
+            scenarios=args.scenarios,
         )
     except (InputError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -173,6 +191,9 @@ def main(argv: list[str] | None = None) -> int:
     if summary.experiment_j is not None:
         print(f"wrote {ASTAR_SUMMARY_FILE} to {args.out}")
         print(format_astar_report(summary.experiment_j))
+    if summary.greedy is not None:
+        print(f"wrote {GREEDY_SUMMARY_FILE} to {args.out}")
+        print(format_greedy_report(summary.greedy))
     if not args.no_sweeps:
         print(f"wrote {len(MEASURED_PLOTS)} plots to {args.plots}")
     if summary.disagreements:
@@ -195,6 +216,10 @@ def run(
     capacities: tuple[int, ...] = CAPACITIES,
     scaling_replicates: int = SCALING_REPLICATES,
     astar_replicates: int = SUITE_REPLICATES,
+    greedy_replicates: int = GREEDY_REPLICATES,
+    density_replicates: int = DENSITY_REPLICATES,
+    speed_replicates: int = H_REPLICATES,
+    scenarios: Path | None = None,
 ) -> RunSummary:
     """Run the available solvers and write every Section 23 CSV.
 
@@ -202,6 +227,13 @@ def run(
     per-count aggregate of Experiment D, and ``astar_summary.json``, the
     aggregate of the dedicated Experiment J benchmark. If any J pair disagrees,
     ``astar_failures.json`` holds the graph and config of each such instance.
+
+    A run with sweeps also measures Experiments B, F, G, and H and writes
+    ``greedy_summary.json``. The optimizer must find a route whenever FRC does
+    and never be slower; an instance where it is not is listed in
+    ``disagreements``. ``scenarios`` is the H5 directory for Experiment I.
+    ``None`` leaves ``real_routes.csv`` as an ``UNAVAILABLE`` row, and the
+    command line defaults to ``data/processed``.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     sample = load_sample()
@@ -249,6 +281,15 @@ def run(
         disagreements.extend(scale_failed)
         disagreements.extend(capacity_failed)
         disagreements.extend(astar.failed)
+        comparisons = {
+            "B": experiment_b(seed, timing_repeats, greedy_replicates),
+            "F": experiment_f(seed, timing_repeats, greedy_replicates),
+            "G": experiment_g(seed, timing_repeats, density_replicates),
+            "H": experiment_h(seed, timing_repeats, speed_replicates),
+        }
+        for letter, comparison in comparisons.items():
+            measured[FILES[letter]] = comparison.rows
+            disagreements.extend(comparison.failed)
         measured["soc_resolution.csv"] = soc_rows
         measured["charger_scaling.csv"] = scale_rows
         measured["battery_capacity.csv"] = capacity_rows
@@ -256,8 +297,17 @@ def run(
         astar_summary = astar.summary
         astar_failures = astar.failures
     else:
-        for filename, experiment, algorithm, note in _SWEEP_PLACEHOLDERS:
+        for filename, experiment, algorithm, note in SWEEP_PLACEHOLDERS:
             measured[filename] = [_unavailable(experiment, algorithm, note, seed)]
+
+    real: Comparison | None = None
+    if scenarios is None:
+        note = "No scenario directory was given (S9/H5). Experiment I was not run."
+        measured["real_routes.csv"] = [_unavailable("I", "", note, seed)]
+    else:
+        real = experiment_i(scenarios, timing_repeats)
+        measured["real_routes.csv"] = real.rows
+        disagreements.extend(real.failed)
 
     write_csv(output_dir / "correctness.csv", correctness)
     if a_summary is not None:
@@ -274,6 +324,19 @@ def run(
         (output_dir / SCALING_SUMMARY_FILE).write_text(summary_text + "\n", encoding="utf-8")
     else:
         (output_dir / SCALING_SUMMARY_FILE).unlink(missing_ok=True)
+    greedy_summary: dict | None = None
+    if sweeps:
+        greedy_summary = summarize(
+            comparisons["B"],
+            comparisons["F"],
+            comparisons["G"],
+            comparisons["H"],
+            real,
+        )
+        greedy_text = json.dumps(greedy_summary, indent=2, sort_keys=True)
+        (output_dir / GREEDY_SUMMARY_FILE).write_text(greedy_text + "\n", encoding="utf-8")
+    else:
+        (output_dir / GREEDY_SUMMARY_FILE).unlink(missing_ok=True)
     if astar_summary is not None:
         astar_text = json.dumps(astar_summary, indent=2, sort_keys=True)
         (output_dir / ASTAR_SUMMARY_FILE).write_text(astar_text + "\n", encoding="utf-8")
@@ -284,11 +347,6 @@ def run(
         failures_path.write_text(json.dumps(astar_failures, indent=2) + "\n", encoding="utf-8")
     elif failures_path.exists():
         failures_path.unlink()  # a rerun that passes must not leave an old failure behind
-    for filename, experiment, algorithm, note in _PENDING:
-        write_csv(
-            output_dir / filename,
-            [_unavailable(experiment, algorithm, note, seed)],
-        )
     if sweeps:
         charts = dict(measured)
         charts["astar_comparison.csv"] = astar_rows
@@ -298,6 +356,7 @@ def run(
         tuple(disagreements),
         a_summary,
         astar_summary,
+        greedy_summary,
     )
 
 
@@ -449,9 +508,33 @@ def _parser() -> argparse.ArgumentParser:
         help="Experiment J replicates per factor combination (36 combinations)",
     )
     parser.add_argument(
+        "--greedy-replicates",
+        type=int,
+        default=GREEDY_REPLICATES,
+        help="station pools per cell of Experiments B and F",
+    )
+    parser.add_argument(
+        "--density-replicates",
+        type=int,
+        default=DENSITY_REPLICATES,
+        help="station pools per density level of Experiment G",
+    )
+    parser.add_argument(
+        "--speed-replicates",
+        type=int,
+        default=H_REPLICATES,
+        help="station pools per rate profile of Experiment H",
+    )
+    parser.add_argument(
+        "--scenarios",
+        type=Path,
+        default=DEFAULT_SCENARIOS,
+        help="H5 scenario directory for Experiment I (UNAVAILABLE row if absent)",
+    )
+    parser.add_argument(
         "--no-sweeps",
         action="store_true",
-        help="skip Experiments C, D, E, and J and leave those CSV files unmeasured",
+        help="skip Experiments B, C, D, E, F, G, H, and J and leave those CSV files unmeasured",
     )
     return parser
 
