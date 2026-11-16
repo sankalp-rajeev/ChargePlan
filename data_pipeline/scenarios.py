@@ -17,7 +17,9 @@ Categories required by the PRD:
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -34,11 +36,11 @@ from data_pipeline.reduce_graph import (
 )
 from optimizer.model import haversine_miles
 
-_ROOT = Path(__file__).resolve().parents[1]
-_CONFIG_SCHEMA = _ROOT / "contracts" / "trip_config.schema.json"
-_DEFAULT_PROCESSED = _ROOT / "data" / "processed"
-_DEFAULT_CACHE = _ROOT / ".osm_cache"
-_DEFAULT_SNAPSHOT = _ROOT / "data" / "raw" / "afdc_ev_midwest_2026-11-09.json"
+ROOT = Path(__file__).resolve().parents[1]
+CONFIG_SCHEMA = ROOT / "contracts" / "trip_config.schema.json"
+DEFAULT_PROCESSED = ROOT / "data" / "processed"
+DEFAULT_CACHE = ROOT / ".osm_cache"
+DEFAULT_SNAPSHOT = ROOT / "data" / "raw" / "afdc_ev_midwest_2026-11-09.json"
 
 # Frozen Midwest places used by the demonstration corridors.
 PLACES: dict[str, dict[str, float]] = {
@@ -49,6 +51,8 @@ PLACES: dict[str, dict[str, float]] = {
 }
 
 RoadBackend = Literal["auto", "osmnx", "haversine"]
+
+_DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 @dataclass(frozen=True)
@@ -67,7 +71,7 @@ class ScenarioSpec:
     soc_step_kwh: float = 1.0
     max_chargers: int | None = 25
     corridor_width_miles: float = DEFAULT_CORRIDOR_WIDTH_MILES
-    station_filter: Literal["all", "mixed_speeds", "sparse"] = "all"
+    station_filter: Literal["all", "dc_fast", "mixed_speeds", "sparse"] = "all"
 
 
 def place(name: str) -> dict[str, float]:
@@ -104,7 +108,7 @@ def default_trip_config(
 
 def validate_trip_config(config: dict) -> None:
     """Raise ``ValueError`` if ``config`` fails the frozen trip-config schema."""
-    schema = json.loads(_CONFIG_SCHEMA.read_text(encoding="utf-8"))
+    schema = json.loads(CONFIG_SCHEMA.read_text(encoding="utf-8"))
     validator_cls = jsonschema.validators.validator_for(schema)
     validator_cls.check_schema(schema)
     errors = sorted(validator_cls(schema).iter_errors(config), key=lambda err: list(err.path))
@@ -242,7 +246,7 @@ def filter_stations_for_scenario(
     destination: dict,
 ) -> list[dict]:
     """Apply the scenario's station filter before graph assembly."""
-    if spec.station_filter == "all":
+    if spec.station_filter in ("all", "dc_fast"):
         candidates = stations_between_endpoints(
             select_candidates(
                 stations,
@@ -253,6 +257,14 @@ def filter_stations_for_scenario(
             origin,
             destination,
         )
+        if spec.station_filter == "dc_fast":
+            # Select by charger class before subsampling, so the cap is spent on
+            # DC-fast sites instead of whatever mix sits at each position.
+            candidates = [
+                station for station in candidates if station.get("charger_class") == "dc_fast"
+            ]
+            if not candidates:
+                raise ValueError("dc_fast filter found no DC-fast stations on the OD segment")
         if spec.max_chargers is None:
             return candidates
         return subsample_by_progress(
@@ -308,12 +320,15 @@ def scenario_specs() -> list[ScenarioSpec]:
         ScenarioSpec(
             scenario_id="multi_stop_detroit_chicago",
             category="multi_stop",
-            description="Detroit–Chicago corridor that needs multiple charging decisions.",
+            description=(
+                "Detroit–Chicago corridor that needs multiple charging decisions "
+                "(DC-fast chargers only)."
+            ),
             origin_place="detroit",
             destination_place="chicago",
             initial_soc_kwh=40.0,
             max_chargers=25,
-            station_filter="all",
+            station_filter="dc_fast",
         ),
         ScenarioSpec(
             scenario_id="mixed_speeds_detroit_chicago",
@@ -353,11 +368,17 @@ def build_scenario(
     cache_dir: str | Path,
     *,
     road_backend: RoadBackend = "haversine",
+    snapshot_path: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Assemble graph, trip config, and metadata for one scenario."""
+    """Assemble graph, trip config, and metadata for one scenario.
+
+    ``snapshot_path`` is the AFDC file ``stations`` were loaded from; it only
+    feeds provenance fields in ``scenario_meta.json``.
+    """
     origin = place(spec.origin_place)
     destination = place(spec.destination_place)
     filtered = filter_stations_for_scenario(stations, spec, origin, destination)
+    backend_counts: dict[str, int] = {}
     graph = build_canonical_graph(
         origin,
         destination,
@@ -368,6 +389,7 @@ def build_scenario(
         road_backend=road_backend,
         max_battery_kwh=spec.battery_capacity_kwh,
         consumption_kwh_per_mile=spec.consumption_kwh_per_mile,
+        backend_counts=backend_counts,
     )
     config = default_trip_config(
         battery_capacity_kwh=spec.battery_capacity_kwh,
@@ -377,16 +399,68 @@ def build_scenario(
         soc_step_kwh=spec.soc_step_kwh,
     )
     validate_trip_config(config)
+
+    charger_ids = {node["id"] for node in graph["nodes"] if node["type"] == "charger"}
+    fallback_ids = {
+        str(station["id"]) for station in filtered if station.get("used_fallback_rate")
+    }
+    edge_counts = {
+        "osmnx": backend_counts.get("osmnx", 0),
+        "haversine": backend_counts.get("haversine", 0),
+    }
     return {
         "scenario_id": spec.scenario_id,
         "category": spec.category,
         "description": spec.description,
         "graph": graph,
         "config": config,
-        "charger_count": sum(1 for node in graph["nodes"] if node["type"] == "charger"),
+        "charger_count": len(charger_ids),
         "origin_place": spec.origin_place,
         "destination_place": spec.destination_place,
+        "road_backend_requested": road_backend,
+        "road_backend": effective_road_backend(edge_counts),
+        "edge_count": len(graph["edges"]),
+        "edge_count_by_backend": edge_counts,
+        "fallback_rate_charger_count": len(charger_ids & fallback_ids),
+        "afdc_snapshot": snapshot_provenance(snapshot_path),
     }
+
+
+def effective_road_backend(edge_counts: dict[str, int]) -> str:
+    """Name the backend that actually produced the edges.
+
+    ``"haversine"`` or ``"osmnx"`` when every edge came from one source (also
+    ``"haversine"`` for an edgeless graph). ``"mixed"`` only appears under
+    ``--backend auto`` when OSMnx routed some pairs and the documented
+    haversine fallback routed others.
+    """
+    osmnx = edge_counts.get("osmnx", 0)
+    haversine = edge_counts.get("haversine", 0)
+    if osmnx and haversine:
+        return "mixed"
+    return "osmnx" if osmnx else "haversine"
+
+
+def snapshot_provenance(snapshot_path: str | Path | None) -> dict[str, str | None]:
+    """File name, ISO date (from the ``YYYY-MM-DD`` in the name), and sha256 of a snapshot."""
+    if snapshot_path is None:
+        return {"file": None, "date": None, "sha256": None}
+    path = Path(snapshot_path)
+    match = _DATE_PATTERN.search(path.name)
+    return {
+        "file": path.name,
+        "date": match.group(0) if match else None,
+        "sha256": file_sha256(path) if path.is_file() else None,
+    }
+
+
+def file_sha256(path: str | Path) -> str:
+    """Hex SHA-256 of a file's bytes."""
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def write_scenario(scenario: dict[str, Any], output_dir: str | Path) -> Path:
@@ -396,6 +470,8 @@ def write_scenario(scenario: dict[str, Any], output_dir: str | Path) -> Path:
     graph_path = root / "canonical_graph.json"
     export_graph(scenario["graph"]["nodes"], scenario["graph"]["edges"], graph_path)
     export_trip_config(scenario["config"], root / "trip_config.json")
+    config_path = root / "trip_config.json"
+    snapshot = scenario["afdc_snapshot"]
     meta = {
         "scenario_id": scenario["scenario_id"],
         "category": scenario["category"],
@@ -403,6 +479,16 @@ def write_scenario(scenario: dict[str, Any], output_dir: str | Path) -> Path:
         "origin_place": scenario["origin_place"],
         "destination_place": scenario["destination_place"],
         "charger_count": scenario["charger_count"],
+        "road_backend": scenario["road_backend"],
+        "road_backend_requested": scenario["road_backend_requested"],
+        "edge_count": scenario["edge_count"],
+        "edge_count_by_backend": scenario["edge_count_by_backend"],
+        "afdc_snapshot_file": snapshot["file"],
+        "afdc_snapshot_date": snapshot["date"],
+        "afdc_snapshot_sha256": snapshot["sha256"],
+        "canonical_graph_sha256": file_sha256(graph_path),
+        "trip_config_sha256": file_sha256(config_path),
+        "fallback_rate_charger_count": scenario["fallback_rate_charger_count"],
     }
     (root / "scenario_meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
     return root
@@ -415,6 +501,7 @@ def build_all_scenarios(
     *,
     road_backend: RoadBackend = "haversine",
     scenario_ids: list[str] | None = None,
+    snapshot_path: str | Path | None = None,
 ) -> list[Path]:
     """Build and write every requested H5 scenario. Returns written directories."""
     wanted = set(scenario_ids) if scenario_ids is not None else None
@@ -422,7 +509,13 @@ def build_all_scenarios(
     for spec in scenario_specs():
         if wanted is not None and spec.scenario_id not in wanted:
             continue
-        scenario = build_scenario(spec, stations, cache_dir, road_backend=road_backend)
+        scenario = build_scenario(
+            spec,
+            stations,
+            cache_dir,
+            road_backend=road_backend,
+            snapshot_path=snapshot_path,
+        )
         written.append(write_scenario(scenario, output_dir))
     return written
 
@@ -490,19 +583,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--snapshot",
         type=Path,
-        default=_DEFAULT_SNAPSHOT,
+        default=DEFAULT_SNAPSHOT,
         help="Path to the dated AFDC JSON/CSV snapshot",
     )
     parser.add_argument(
         "--out",
         type=Path,
-        default=_DEFAULT_PROCESSED,
+        default=DEFAULT_PROCESSED,
         help="Directory that receives scenario subfolders",
     )
     parser.add_argument(
         "--cache",
         type=Path,
-        default=_DEFAULT_CACHE,
+        default=DEFAULT_CACHE,
         help="Road-metrics cache directory",
     )
     parser.add_argument(
@@ -530,6 +623,7 @@ def main(argv: list[str] | None = None) -> int:
         args.out,
         road_backend=args.backend,
         scenario_ids=args.only,
+        snapshot_path=args.snapshot,
     )
     for path in written:
         print(path)

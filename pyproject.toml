@@ -18,6 +18,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+roads = [
+  "osmnx",
+]
 dev = [
   "pytest==9.2.0",
   "ruff==0.17.3",

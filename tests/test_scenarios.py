@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -12,6 +15,7 @@ from data_pipeline.scenarios import (
     build_all_scenarios,
     build_scenario,
     default_trip_config,
+    effective_road_backend,
     export_trip_config,
     filter_stations_for_scenario,
     get_scenario_spec,
@@ -33,6 +37,7 @@ def _station(
     charger_class: str = "dc_fast",
     rate: float = 150.0,
     lat: float = 42.2,
+    used_fallback_rate: bool = False,
 ) -> dict:
     return {
         "id": station_id,
@@ -41,7 +46,7 @@ def _station(
         "lon": lon,
         "charger_class": charger_class,
         "charge_rate_kw": rate,
-        "used_fallback_rate": False,
+        "used_fallback_rate": used_fallback_rate,
         "network": None,
         "city": None,
         "state": "MI",
@@ -193,3 +198,92 @@ def test_build_all_scenarios_writes_requested_ids(tmp_path: Path) -> None:
     for path in written:
         load_graph(path / "canonical_graph.json")
         load_config(path / "trip_config.json")
+
+
+def test_dc_fast_filter_excludes_level2() -> None:
+    spec = get_scenario_spec("multi_stop_detroit_chicago")
+    assert spec.station_filter == "dc_fast"
+    selected = filter_stations_for_scenario(
+        _corridor_stations(),
+        spec,
+        place("detroit"),
+        place("chicago"),
+    )
+    assert {station["id"] for station in selected} == {"dc1", "dc2", "dc3", "dc4"}
+    assert all(station["charger_class"] == "dc_fast" for station in selected)
+
+
+def test_dc_fast_filter_requires_dc_fast_stations() -> None:
+    spec = get_scenario_spec("multi_stop_detroit_chicago")
+    only_l2 = [s for s in _corridor_stations() if s["charger_class"] == "level2"]
+    with pytest.raises(ValueError, match="no DC-fast"):
+        filter_stations_for_scenario(only_l2, spec, place("detroit"), place("chicago"))
+
+
+def test_scenario_meta_records_provenance(tmp_path: Path) -> None:
+    snapshot = tmp_path / "afdc_ev_midwest_2026-11-09.json"
+    snapshot.write_text('{"fuel_stations": []}', encoding="utf-8")
+    stations = _corridor_stations()
+    stations[0]["used_fallback_rate"] = True
+    stations[1]["used_fallback_rate"] = True  # l2a: inside the corridor
+    spec = ScenarioSpec(
+        scenario_id="unit_meta",
+        category="multi_stop",
+        description="unit test corridor",
+        origin_place="detroit",
+        destination_place="chicago",
+        initial_soc_kwh=40.0,
+        max_chargers=None,
+        station_filter="all",
+    )
+    scenario = build_scenario(
+        spec,
+        stations,
+        tmp_path / "cache",
+        road_backend="haversine",
+        snapshot_path=snapshot,
+    )
+    root = write_scenario(scenario, tmp_path / "processed")
+    meta = json.loads((root / "scenario_meta.json").read_text(encoding="utf-8"))
+
+    graph_path = root / "canonical_graph.json"
+    config_path = root / "trip_config.json"
+    graph = json.loads(graph_path.read_text(encoding="utf-8"))
+
+    assert meta["road_backend"] == "haversine"
+    assert meta["edge_count"] == len(graph["edges"]) > 0
+    assert meta["edge_count_by_backend"] == {"osmnx": 0, "haversine": len(graph["edges"])}
+    assert meta["afdc_snapshot_file"] == snapshot.name
+    assert meta["afdc_snapshot_date"] == "2026-11-09"
+    assert meta["afdc_snapshot_sha256"] == hashlib.sha256(snapshot.read_bytes()).hexdigest()
+    assert meta["canonical_graph_sha256"] == hashlib.sha256(graph_path.read_bytes()).hexdigest()
+    assert meta["trip_config_sha256"] == hashlib.sha256(config_path.read_bytes()).hexdigest()
+    assert meta["fallback_rate_charger_count"] == 2
+
+
+def test_scenario_meta_without_snapshot(tmp_path: Path) -> None:
+    scenario = build_scenario(
+        get_scenario_spec("sparse_detroit_chicago"),
+        _corridor_stations(),
+        tmp_path / "cache",
+    )
+    root = write_scenario(scenario, tmp_path / "processed")
+    meta = json.loads((root / "scenario_meta.json").read_text(encoding="utf-8"))
+    assert meta["afdc_snapshot_file"] is None
+    assert meta["afdc_snapshot_date"] is None
+    assert meta["fallback_rate_charger_count"] == 0
+
+
+def test_effective_road_backend() -> None:
+    assert effective_road_backend({"osmnx": 3, "haversine": 0}) == "osmnx"
+    assert effective_road_backend({"osmnx": 0, "haversine": 3}) == "haversine"
+    assert effective_road_backend({"osmnx": 2, "haversine": 1}) == "mixed"
+    assert effective_road_backend({}) == "haversine"
+
+
+def test_pyproject_declares_roads_extra() -> None:
+    pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    extras = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"][
+        "optional-dependencies"
+    ]
+    assert any(req.startswith("osmnx") for req in extras["roads"])
