@@ -139,6 +139,7 @@ def build_edges(
     consumption_kwh_per_mile: float = DEFAULT_CONSUMPTION_KWH_PER_MILE,
     origin_id: str = "origin",
     destination_id: str = "destination",
+    backend_counts: dict[str, int] | None = None,
 ) -> list[dict]:
     """Build a directed edge for every energy-reachable ordered node pair.
 
@@ -150,6 +151,9 @@ def build_edges(
     No edge enters the origin and none leaves the destination: a trip starts
     at the origin and ends on arrival at the destination, so those edges can
     never be part of a route.
+
+    When ``backend_counts`` is given, it is incremented with the routing source
+    (``osmnx`` or ``haversine``) of every kept edge.
     """
     by_id = {node["id"]: node for node in nodes}
     if origin_id not in by_id or destination_id not in by_id:
@@ -165,13 +169,15 @@ def build_edges(
         for end in ordered:
             if end["id"] == start["id"] or end["id"] == origin_id:
                 continue
-            edge = _road_edge(start, end, cache_dir, road_backend)
+            edge, source = _road_edge_with_source(start, end, cache_dir, road_backend)
             if is_edge_within_battery(
                 float(edge["distance_miles"]),
                 max_battery_kwh=max_battery_kwh,
                 consumption_kwh_per_mile=consumption_kwh_per_mile,
             ):
                 edges.append(edge)
+                if backend_counts is not None:
+                    backend_counts[source] = backend_counts.get(source, 0) + 1
 
     return edges
 
@@ -241,8 +247,12 @@ def build_canonical_graph(
     consumption_kwh_per_mile: float = DEFAULT_CONSUMPTION_KWH_PER_MILE,
     origin_id: str = "origin",
     destination_id: str = "destination",
+    backend_counts: dict[str, int] | None = None,
 ) -> dict:
-    """Select corridor candidates and assemble a validated canonical graph dict."""
+    """Select corridor candidates and assemble a validated canonical graph dict.
+
+    ``backend_counts`` optionally receives per-source edge counts (see ``build_edges``).
+    """
     candidates = select_candidates(
         stations,
         origin,
@@ -272,6 +282,7 @@ def build_canonical_graph(
         consumption_kwh_per_mile=consumption_kwh_per_mile,
         origin_id=origin_id,
         destination_id=destination_id,
+        backend_counts=backend_counts,
     )
     graph = {"nodes": nodes, "edges": edges}
     validate_canonical_graph(graph)
@@ -302,13 +313,23 @@ def _road_edge(
     cache_dir: str | Path,
     road_backend: Literal["auto", "osmnx", "haversine"],
 ) -> dict:
+    return _road_edge_with_source(start, end, cache_dir, road_backend)[0]
+
+
+def _road_edge_with_source(
+    start: dict,
+    end: dict,
+    cache_dir: str | Path,
+    road_backend: Literal["auto", "osmnx", "haversine"],
+) -> tuple[dict, str]:
     metrics = road_metrics(start, end, cache_dir, backend=road_backend)
-    return {
+    edge = {
         "from": start["id"],
         "to": end["id"],
         "distance_miles": float(metrics["distance_miles"]),
         "drive_time_minutes": float(metrics["drive_time_minutes"]),
     }
+    return edge, str(metrics["backend"])
 
 
 def _order_nodes_along_corridor(
