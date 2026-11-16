@@ -13,7 +13,7 @@ verdict says so instead of comparing zeros.
 from __future__ import annotations
 
 from visualizer.data_io import VisualizerInputError
-from visualizer.soc_chart import UNAVAILABLE, _duration
+from visualizer.soc_chart import UNAVAILABLE, duration
 
 GREEDY_ALGORITHM = "greedy_frc"
 TIE_TOLERANCE_MINUTES = 0.05
@@ -109,7 +109,7 @@ def adjudication(greedy: dict, optimized: dict) -> tuple[str, str]:
     if not greedy_ok:
         return (
             "The greedy baseline found no feasible plan for this trip. "
-            f"The optimizer completes it in {_duration(optimized['total_time_minutes'])} "
+            f"The optimizer completes it in {duration(optimized['total_time_minutes'])} "
             f"with {optimized['number_of_charging_stops']} charging stop(s).",
             "success",
         )
@@ -125,13 +125,13 @@ def adjudication(greedy: dict, optimized: dict) -> tuple[str, str]:
         return "The optimized plan takes the same total time as the greedy baseline.", "info"
     if saved < 0:
         return (
-            f"The optimized plan is {_duration(-saved)} slower than the greedy baseline. "
+            f"The optimized plan is {duration(-saved)} slower than the greedy baseline. "
             "The optimizer should never do worse; check that both results are for the same trip.",
             "warning",
         )
     percent = 100.0 * saved / greedy["total_time_minutes"]
     return (
-        f"The optimized plan saves {_duration(saved)} ({percent:.1f}%) "
+        f"The optimized plan saves {duration(saved)} ({percent:.1f}%) "
         "of total time over the greedy baseline.",
         "success",
     )
@@ -141,7 +141,7 @@ def format(value: float | None, kind: str) -> str:
     if value is None:
         return UNAVAILABLE
     if kind == "minutes":
-        return _duration(value)
+        return duration(value)
     if kind == "miles":
         return f"{value:.1f} mi"
     return str(int(value))

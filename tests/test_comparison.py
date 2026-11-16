@@ -66,33 +66,33 @@ def test_rows_follow_the_prd_table_order() -> None:
 
 
 def test_feasible_pair_reports_each_metric_and_difference() -> None:
-    greedy = greedy(
+    greed = greedy(
         total_time_minutes=200.0,
         driving_time_minutes=150.0,
         charging_time_minutes=50.0,
         number_of_charging_stops=1,
         total_distance_miles=100.0,
     )
-    optimized = optimized(
+    optimal = optimized(
         total_time_minutes=150.0,
         driving_time_minutes=130.0,
         charging_time_minutes=20.0,
         number_of_charging_stops=3,
         total_distance_miles=110.5,
     )
-    comparison = render_comparison(greedy, optimized)
-    rows = rows(comparison)
+    comparison = render_comparison(greed, optimal)
+    row = rows(comparison)
 
-    assert rows["Total time"]["greedy_value"] == 200.0
-    assert rows["Total time"]["optimized_value"] == 150.0
-    assert rows["Total time"]["delta"] == pytest.approx(-50.0)
-    assert rows["Total time"]["difference"] == "-50.0 min (-25.0%)"
-    assert rows["Charging time"]["difference"] == "-30.0 min (-60.0%)"
-    assert rows["Stops"]["greedy"] == "1"
-    assert rows["Stops"]["optimized"] == "3"
-    assert rows["Stops"]["difference"] == "+2"
-    assert rows["Distance"]["greedy"] == "100.0 mi"
-    assert rows["Distance"]["difference"] == "+10.5 mi"
+    assert row["Total time"]["greedy_value"] == 200.0
+    assert row["Total time"]["optimized_value"] == 150.0
+    assert row["Total time"]["delta"] == pytest.approx(-50.0)
+    assert row["Total time"]["difference"] == "-50.0 min (-25.0%)"
+    assert row["Charging time"]["difference"] == "-30.0 min (-60.0%)"
+    assert row["Stops"]["greedy"] == "1"
+    assert row["Stops"]["optimized"] == "3"
+    assert row["Stops"]["difference"] == "+2"
+    assert row["Distance"]["greedy"] == "100.0 mi"
+    assert row["Distance"]["difference"] == "+10.5 mi"
     assert comparison["greedy_status"] == comparison["optimized_status"] == "FEASIBLE"
     assert comparison["severity"] == "success"
     assert "saves" in comparison["verdict"]
@@ -115,9 +115,9 @@ def test_optimized_slower_than_greedy_is_flagged() -> None:
 
 def test_greedy_infeasible_optimized_feasible_shows_no_greedy_plan() -> None:
     # An infeasible result still reports metrics; they must not be shown as a 0-minute plan.
-    greedy = greedy("INFEASIBLE", total_time_minutes=0.0, total_distance_miles=0.0)
-    optimized = optimized(total_time_minutes=321.5, number_of_charging_stops=2)
-    comparison = render_comparison(greedy, optimized)
+    greed = greedy("INFEASIBLE", total_time_minutes=0.0, total_distance_miles=0.0)
+    optimal = optimized(total_time_minutes=321.5, number_of_charging_stops=2)
+    comparison = render_comparison(greed, optimal)
 
     assert comparison["greedy_status"] == "INFEASIBLE"
     assert comparison["optimized_status"] == "FEASIBLE"
@@ -154,7 +154,7 @@ def test_long_durations_use_the_h7_hours_format() -> None:
 
 @pytest.mark.parametrize("algorithm", ["label_setting", "astar", "exact"])
 def test_any_optimizer_algorithm_is_accepted(algorithm: str) -> None:
-    comparison = render_comparison(greedy(), optimized(algorithm))
+    comparison = render_comparison(greedy(), result(algorithm))
     assert comparison["optimized_algorithm"] == algorithm
 
 
@@ -166,10 +166,10 @@ def test_wrong_algorithm_roles_are_rejected() -> None:
 
 
 def test_inputs_are_not_modified() -> None:
-    greedy, optimized = greedy("INFEASIBLE"), optimized()
-    before = copy.deepcopy((greedy, optimized))
-    render_comparison(greedy, optimized)
-    assert (greedy, optimized) == before
+    greed, optimal = greedy("INFEASIBLE"), optimized()
+    before = copy.deepcopy((greed, optimal))
+    render_comparison(greed, optimal)
+    assert (greed, optimal) == before
 
 
 def test_comparison_table_has_the_prd_columns() -> None:
@@ -255,19 +255,19 @@ def test_find_greedy_result_prefers_explicit_path_and_tolerates_missing_sibling(
     assert find_greedy_result(str(result), "") == sibling
 
 
-def _run_app(monkeypatch: pytest.MonkeyPatch, *args: str):
+def run_app(monkeypatch: pytest.MonkeyPatch, *args: str):
     from streamlit.testing.v1 import AppTest
 
     monkeypatch.setattr(sys, "argv", ["app.py", *args])
     return AppTest.from_file(str(ROOT / "visualizer" / "app.py"), default_timeout=30).run()
 
 
-def _table_text(app) -> str:
+def table_text(app) -> str:
     return json.dumps([t.value.to_dict() for t in app.table])
 
 
 def test_app_shows_comparison_for_the_default_mock_results(monkeypatch) -> None:
-    app = _run_app(monkeypatch)
+    app = run_app(monkeypatch)
     assert not app.exception
     assert not app.error
     assert any(s.value == "Greedy vs optimized" for s in app.subheader)
@@ -292,7 +292,7 @@ def test_app_shows_comparison_for_the_default_mock_results(monkeypatch) -> None:
 def test_app_without_a_greedy_result_shows_a_hint(monkeypatch, tmp_path: Path) -> None:
     alone = tmp_path / "algorithm_result.json"
     alone.write_text(MOCK_OPTIMIZED.read_text(encoding="utf-8"), encoding="utf-8")
-    app = _run_app(monkeypatch, "--result", str(alone))
+    app = run_app(monkeypatch, "--result", str(alone))
     assert not app.exception
     assert len(app.table) == 0
     assert any("No greedy baseline" in i.value for i in app.info)
@@ -303,25 +303,25 @@ def test_app_handles_greedy_infeasible(monkeypatch, tmp_path: Path) -> None:
     infeasible = greedy("INFEASIBLE", total_time_minutes=0.0, total_distance_miles=0.0)
     path = tmp_path / "greedy.json"
     path.write_text(json.dumps(infeasible), encoding="utf-8")
-    app = _run_app(monkeypatch, "--greedy", str(path))
+    app = run_app(monkeypatch, "--greedy", str(path))
     assert not app.exception
     assert not app.error
     assert any("no feasible plan" in s.value for s in app.success)
-    assert "n/a" in _table_text(app)
+    assert "n/a" in table_text(app)
     assert len(app.get("vega_lite_chart")) == 1
 
 
 def test_app_reports_a_bad_greedy_file_without_hiding_the_rest(monkeypatch, tmp_path: Path) -> None:
     bad = tmp_path / "greedy.json"
     bad.write_text("not json", encoding="utf-8")
-    app = _run_app(monkeypatch, "--greedy", str(bad))
+    app = run_app(monkeypatch, "--greedy", str(bad))
     assert not app.exception
     assert any("not valid JSON" in e.value for e in app.error)
     assert len(app.get("vega_lite_chart")) == 1
 
 
 def test_app_with_a_greedy_main_result_asks_for_an_optimized_one(monkeypatch) -> None:
-    app = _run_app(monkeypatch, "--result", str(MOCK_GREEDY))
+    app = run_app(monkeypatch, "--result", str(MOCK_GREEDY))
     assert not app.exception
     assert not app.error
     assert any("main result is the greedy baseline" in i.value for i in app.info)
