@@ -1,6 +1,7 @@
 """Load and validate the files the visualizer reads.
 
-The visualizer only reads ``canonical_graph.json`` and ``algorithm_result.json``.
+The visualizer reads ``canonical_graph.json`` and ``algorithm_result.json``, and
+optionally ``trip_config.json`` for percent-of-battery displays.
 It validates them against the frozen schemas and never runs an optimizer.
 """
 
@@ -26,6 +27,11 @@ def load_graph(path: str | Path) -> dict:
 def load_result(path: str | Path) -> dict:
     """Load an ``algorithm_result.json`` file and validate it against the schema."""
     return _load(path, "algorithm_result.schema.json")
+
+
+def load_trip_config(path: str | Path) -> dict:
+    """Load a ``trip_config.json`` file and validate it against the schema."""
+    return _load(path, "trip_config.schema.json")
 
 
 def _load(path: str | Path, schema_name: str) -> dict:
