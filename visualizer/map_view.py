@@ -153,7 +153,7 @@ def render_map(graph: dict, result: dict):
             weight=5,
             opacity=0.85,
         )
-        line.add_child(folium.Tooltip(_leg_text(start, end, leg)))
+        line.add_child(folium.Tooltip(leg_text(start, end, leg)))
         route_group.add_child(line)
     fmap.add_child(route_group)
 
@@ -168,7 +168,7 @@ def render_map(graph: dict, result: dict):
                 fill=True,
                 fill_color=UNUSED_COLOR,
                 fill_opacity=0.6,
-                tooltip=_charger_text(node, "Unused charger"),
+                tooltip=charger_text(node, "Unused charger"),
             )
         )
     for node in model.pass_through:
@@ -181,7 +181,7 @@ def render_map(graph: dict, result: dict):
                 fill=True,
                 fill_color="#ffffff",
                 fill_opacity=1.0,
-                tooltip=_charger_text(node, "On route, no charge"),
+                tooltip=charger_text(node, "On route, no charge"),
             )
         )
     fmap.add_child(unused_group)
@@ -194,10 +194,10 @@ def render_map(graph: dict, result: dict):
                 icon=folium.DivIcon(
                     icon_size=(28, 28),
                     icon_anchor=(14, 14),
-                    html=_stop_badge(stop.order),
+                    html=stop_badge(stop.order),
                 ),
                 tooltip=f"Charging stop {stop.order}: {html.escape(stop.node['id'])}",
-                popup=folium.Popup(_stop_popup(stop), max_width=300),
+                popup=folium.Popup(stop_popup(stop), max_width=300),
                 z_index_offset=500,
             )
         )
@@ -216,7 +216,7 @@ def render_map(graph: dict, result: dict):
                 ),
                 tooltip=f"{'Origin' if is_origin else 'Destination'}: {html.escape(node['id'])}",
                 popup=folium.Popup(
-                    _endpoint_popup(node, model.charges_at_endpoints.get(node["id"], ())),
+                    endpoint_popup(node, model.charges_at_endpoints.get(node["id"], ())),
                     max_width=300,
                 ),
                 z_index_offset=1000,
@@ -225,18 +225,18 @@ def render_map(graph: dict, result: dict):
     fmap.add_child(endpoint_group)
 
     folium.LayerControl(collapsed=False).add_to(fmap)
-    fmap.get_root().html.add_child(folium.Element(_legend_html(model)))
-    fmap.fit_bounds(_bounds(graph))
+    fmap.get_root().html.add_child(folium.Element(legend_html(model)))
+    fmap.fit_bounds(bounds(graph))
     return fmap
 
 
-def _bounds(graph: dict) -> list[list[float]]:
+def bounds(graph: dict) -> list[list[float]]:
     lats = [n["lat"] for n in graph["nodes"]]
     lons = [n["lon"] for n in graph["nodes"]]
     return [[min(lats), min(lons)], [max(lats), max(lons)]]
 
 
-def _leg_text(start: dict, end: dict, drive: dict | None) -> str:
+def leg_text(start: dict, end: dict, drive: dict | None) -> str:
     head = f"{html.escape(start['id'])} &rarr; {html.escape(end['id'])}"
     if drive is None:
         return head
@@ -246,11 +246,11 @@ def _leg_text(start: dict, end: dict, drive: dict | None) -> str:
     )
 
 
-def _charger_text(node: dict, label: str) -> str:
+def charger_text(node: dict, label: str) -> str:
     return f"{label}: {html.escape(node['id'])} ({node['charge_rate_kw']:g} kW)"
 
 
-def _charge_lines(charges: tuple[dict, ...]) -> str:
+def charge_lines(charges: tuple[dict, ...]) -> str:
     return "".join(
         f"<br>Charge {c['soc_before_kwh']:g} &rarr; {c['soc_after_kwh']:g} kWh"
         f" ({c['duration_minutes']:.1f} min)"
@@ -258,7 +258,7 @@ def _charge_lines(charges: tuple[dict, ...]) -> str:
     )
 
 
-def _stop_badge(order: int) -> str:
+def stop_badge(order: int) -> str:
     return (
         f'<div style="width:28px;height:28px;line-height:24px;border-radius:50%;'
         f"background:{STOP_COLOR};color:#fff;border:2px solid #fff;text-align:center;"
@@ -266,21 +266,21 @@ def _stop_badge(order: int) -> str:
     )
 
 
-def _stop_popup(stop: ChargingStop) -> str:
+def stop_popup(stop: ChargingStop) -> str:
     node = stop.node
     rate = "" if node["charge_rate_kw"] is None else f" ({node['charge_rate_kw']:g} kW)"
     return (
         f"<b>Charging stop {stop.order}</b><br>{html.escape(node['id'])}{rate}"
-        f"{_charge_lines(stop.charges)}"
+        f"{charge_lines(stop.charges)}"
     )
 
 
-def _endpoint_popup(node: dict, charges: tuple[dict, ...]) -> str:
+def endpoint_popup(node: dict, charges: tuple[dict, ...]) -> str:
     label = "Origin" if node["type"] == "origin" else "Destination"
-    return f"<b>{label}</b><br>{html.escape(node['id'])}{_charge_lines(charges)}"
+    return f"<b>{label}</b><br>{html.escape(node['id'])}{charge_lines(charges)}"
 
 
-def _legend_html(model: MapModel) -> str:
+def legend_html(model: MapModel) -> str:
     def swatch(color: str, shape: str = "circle") -> str:
         radius = "50%" if shape == "circle" else "2px"
         return (

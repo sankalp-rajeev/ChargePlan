@@ -86,10 +86,10 @@ def soc_series(result: dict, trip: dict | None = None) -> list[dict]:
     (0 start, 1 end), ``distance_mi``, ``time_min``, ``soc_kwh``, ``soc_pct``
     (``None`` without a trip config), ``soc`` (the plotted value), and ``label``.
     """
-    capacity = _capacity(trip)
+    capacity = scope(trip)
     rows: list[dict] = []
     for seg in build_segments(result):
-        label = _segment_label(seg)
+        label = segment_label(seg)
         ends = (
             (0, seg.distance_start, seg.time_start, seg.soc_before_kwh),
             (1, seg.distance_end, seg.time_end, seg.soc_after_kwh),
@@ -125,7 +125,7 @@ def render_soc_chart(result: dict, x_axis: str = "distance", trip: dict | None =
     if x_axis not in X_AXES:
         raise ValueError(f"x_axis must be one of {sorted(X_AXES)}, not {x_axis!r}")
     x_field, x_title = X_AXES[x_axis]
-    capacity = _capacity(trip)
+    capacity = scope(trip)
     y_title = "State of charge (kWh)" if capacity is None else "State of charge (% of battery)"
 
     rows = soc_series(result, trip)
@@ -154,10 +154,10 @@ def render_soc_chart(result: dict, x_axis: str = "distance", trip: dict | None =
     layers = [lines, points]
 
     if capacity is not None:
-        layers.append(_threshold_rule(100.0, "Battery capacity", CAPACITY_COLOR))
+        layers.append(threshold_rule(100.0, "Battery capacity", CAPACITY_COLOR))
         reserve = trip.get("reserve_kwh") if trip else None
         if reserve:
-            layers.append(_threshold_rule(100.0 * reserve / capacity, "Reserve", RESERVE_COLOR))
+            layers.append(threshold_rule(100.0 * reserve / capacity, "Reserve", RESERVE_COLOR))
 
     title = "SOC along the trip" if rows else "No plan to chart (no events in this result)"
     return alt.layer(*layers).properties(title=title, height=320)
@@ -173,11 +173,11 @@ def render_timeline(result: dict, trip: dict | None = None) -> list[str]:
 
     An infeasible result has no events and returns an empty list.
     """
-    capacity = _capacity(trip)
+    capacity = scope(trip)
     lines: list[str] = []
     for number, seg in enumerate(build_segments(result), start=1):
         event = seg.event
-        soc = _soc_range(event["soc_before_kwh"], event["soc_after_kwh"], capacity)
+        soc = soc_range(event["soc_before_kwh"], event["soc_after_kwh"], capacity)
         if seg.kind == "drive":
             lines.append(
                 f"{number}. Drive {seg.node_from} -> {seg.node_to}: "
@@ -199,7 +199,7 @@ def render_timeline_diagram(result: dict, trip: dict | None = None) -> str:
     drive or the charge between two nodes. A gap between events (an event that
     does not start where the previous one ended) starts a new block.
     """
-    capacity = _capacity(trip)
+    capacity = scope(trip)
     segments = build_segments(result)
     if not segments:
         return ""
@@ -224,21 +224,21 @@ def render_timeline_diagram(result: dict, trip: dict | None = None) -> str:
         if not contiguous:
             if previous is not None:
                 lines.append("")
-            lines += [node_line(seg.node_from), f"SOC {_soc(seg.soc_before_kwh, capacity)}"]
+            lines += [node_line(seg.node_from), f"SOC {soc(seg.soc_before_kwh, capacity)}"]
         event = seg.event
         if seg.kind == "drive":
             action = f"Drive {event['distance_miles']:.1f} mi, {event['duration_minutes']:.1f} min"
         else:
             action = (
-                f"Charge {_soc(seg.soc_before_kwh, capacity)} -> "
-                f"{_soc(seg.soc_after_kwh, capacity)}, {event['duration_minutes']:.1f} min"
+                f"Charge {soc(seg.soc_before_kwh, capacity)} -> "
+                f"{soc(seg.soc_after_kwh, capacity)}, {event['duration_minutes']:.1f} min"
             )
         lines += [
             "   |",
             f"   | {action}",
             "   v",
             node_line(seg.node_to),
-            f"SOC {_soc(seg.soc_after_kwh, capacity)}",
+            f"SOC {soc(seg.soc_after_kwh, capacity)}",
         ]
         previous = seg
     return "\n".join(lines)
@@ -251,22 +251,22 @@ def build_trip_summary(result: dict, trip: dict | None = None) -> list[tuple[str
     last event when that event ends at the destination (the last route node), and
     ``n/a`` when the result has no events or its events stop short of the destination.
     """
-    capacity = _capacity(trip)
+    capacity = scope(trip)
     metrics = result["metrics"]
-    arrival = _arrival_soc(result)
+    arrival = arrival_soc(result)
     return [
-        ("Total time", _duration(result["total_time_minutes"])),
-        ("Driving time", _duration(result["driving_time_minutes"])),
-        ("Charging time", _duration(result["charging_time_minutes"])),
+        ("Total time", duration(result["total_time_minutes"])),
+        ("Driving time", duration(result["driving_time_minutes"])),
+        ("Charging time", duration(result["charging_time_minutes"])),
         ("Distance", f"{result['total_distance_miles']:.1f} mi"),
         ("Charging stops", str(result["number_of_charging_stops"])),
-        ("Arrival SOC", UNAVAILABLE if arrival is None else _soc(arrival, capacity)),
+        ("Arrival SOC", UNAVAILABLE if arrival is None else soc(arrival, capacity)),
         ("Algorithm runtime", f"{metrics['runtime_ms']:.1f} ms"),
         ("States expanded", f"{metrics['states_expanded']:,}"),
     ]
 
 
-def _arrival_soc(result: dict) -> float | None:
+def arrival_soc(result: dict) -> float | None:
     if result["status"] != "FEASIBLE" or not result["events"] or not result["route_node_ids"]:
         return None
     last = result["events"][-1]
@@ -276,14 +276,14 @@ def _arrival_soc(result: dict) -> float | None:
     return last["soc_after_kwh"]
 
 
-def _capacity(trip: dict | None) -> float | None:
+def scope(trip: dict | None) -> float | None:
     if not trip:
         return None
     capacity = trip.get("battery_capacity_kwh")
     return float(capacity) if capacity else None
 
 
-def _threshold_rule(percent: float, label: str, color: str):
+def threshold_rule(percent: float, label: str, color: str):
     import altair as alt
 
     return (
@@ -293,19 +293,19 @@ def _threshold_rule(percent: float, label: str, color: str):
     )
 
 
-def _segment_label(seg: Segment) -> str:
+def segment_label(seg: Segment) -> str:
     if seg.kind == "drive":
         return f"Drive {seg.node_from} -> {seg.node_to}"
     return f"Charge at {seg.node_from}"
 
 
-def _soc(kwh: float, capacity: float | None) -> str:
+def soc(kwh: float, capacity: float | None) -> str:
     if capacity is None:
         return f"{kwh:g} kWh"
     return f"{kwh:g} kWh ({100.0 * kwh / capacity:.0f}%)"
 
 
-def _soc_range(before: float, after: float, capacity: float | None) -> str:
+def soc_range(before: float, after: float, capacity: float | None) -> str:
     if capacity is None:
         return f"SOC {before:g} -> {after:g} kWh"
     return (
@@ -314,7 +314,7 @@ def _soc_range(before: float, after: float, capacity: float | None) -> str:
     )
 
 
-def _duration(minutes: float) -> str:
+def duration(minutes: float) -> str:
     if minutes < 60:
         return f"{minutes:.1f} min"
     hours, rest = divmod(round(minutes), 60)

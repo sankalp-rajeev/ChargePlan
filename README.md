@@ -12,7 +12,7 @@ Full specification: [docs/PRD.md](docs/PRD.md). Task list: [docs/roadmap.md](doc
 contracts/          JSON schemas (graph, trip config, algorithm result)
 optimizer/          model.py and cli.py (shared), label-setting and A*, exact solver, FRC stub
 data_pipeline/      AFDC stations, OSM routing, canonical-graph export
-visualizer/         map, SOC chart, comparison; mock_results/ until real output exists
+visualizer/         map, SOC chart, greedy comparison; mock_results/ until real output exists
 data/synthetic/     schema samples used by the contract tests
 data/raw/           local snapshots (gitignored)
 data/processed/     reduced graphs (gitignored)
@@ -32,7 +32,7 @@ Shannon edits `optimizer/greedy_baseline.py` and does not edit the other files u
 python -m pip install -r requirements.txt
 make test            # pytest, including schema checks
 make experiments     # python -m experiments.run_all
-make demo            # python -m visualizer.app (Streamlit route map, SOC chart, timeline, trip summary)
+make demo            # python -m visualizer.app (Streamlit route map, SOC chart, timeline, trip summary, greedy comparison)
 ```
 
 Shared optimizer entry point:
