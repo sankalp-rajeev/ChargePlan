@@ -562,6 +562,9 @@ def test_a_disagreement_fails_the_run_and_writes_the_reproduction(
         capacities=(70,),
         scaling_replicates=1,
         astar_replicates=1,
+        greedy_replicates=1,
+        density_replicates=1,
+        speed_replicates=1,
     )
     failed_ids = [d for d in summary.disagreements if d.startswith("astar-")]
     assert len(failed_ids) == 36
@@ -582,6 +585,9 @@ def test_a_disagreement_fails_the_run_and_writes_the_reproduction(
         capacities=(70,),
         scaling_replicates=1,
         astar_replicates=1,
+        greedy_replicates=1,
+        density_replicates=1,
+        speed_replicates=1,
     )
     assert clean.disagreements == ()
     assert not (tmp_path / FAILURES_FILE).exists()

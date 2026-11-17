@@ -97,7 +97,7 @@ S6 is on `main` via [PR #29](https://github.com/sankalp-rajeev/ChargePlan/pull/2
 
 - `make experiments` writes the Section 23 CSV files. Label-setting and A* run on the Detroit–Chicago sample and on 20 tiny graphs from `random.Random(505)`.
 - Exact search runs only at or below 8 nodes, 5 chargers, and 8 capacity steps. The sample is skipped at 70 steps.
-- Greedy and real-data rows stay `UNAVAILABLE`.
+- Greedy and real-data rows stay `UNAVAILABLE` until H9.
 
 S7 is the algorithm sweeps in [PR #30](https://github.com/sankalp-rajeev/ChargePlan/pull/30). It is not on `main` yet. Issue #7 stays open until that pull request merges. Issue #4 stays open until H4.
 
@@ -106,7 +106,7 @@ S7 is the algorithm sweeps in [PR #30](https://github.com/sankalp-rajeev/ChargeP
 - Experiment D keeps 10, 25, 50, and 100 stations from a seeded two-dimensional pool (10 pools per count). A station keeps its position and rate at every count, and roads connect stations that are within battery range. Adding stations also adds roads, so node count and graph density grow together. 200 stations run only on request.
 - Experiment E changes only battery capacity on the sample roads. Initial SOC stays 30 kWh. 40 kWh is infeasible.
 - Experiment J runs its own 216 synthetic networks (geometry, charger count, road speeds, SOC step). A* returned the same label as label-setting on all of them and expanded a median 17.2% fewer states, from 1.3% to 43.2%. It saves most on straight corridors with one road speed and least on winding roads with mixed speeds. The roads are synthetic, and the real-network comparison waits for S9.
-- Greedy, charger density, initial SOC, charger speed, and real routes stay `UNAVAILABLE`. Their two plots are not written.
+- Experiments B, F, G, and H (H9) compare the optimizer with the FRC baseline on seeded synthetic corridors, and Experiment I runs the H5 scenarios under `data/processed/` when they exist (an `UNAVAILABLE` row otherwise). On the default run the optimizer was never slower than the baseline and was a median 13.4% faster in B. The two remaining Section 23 plots are written.
 - Inputs, the density confound in Experiment D, and the commands are in `experiments/README.md`.
 
 This branch is Ruff-clean, with pytest at 94 passed and 2 skipped (the greedy baseline and the missing real-data graph).

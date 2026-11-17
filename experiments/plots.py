@@ -1,8 +1,7 @@
 ﻿"""PNG charts for the measurements in the Section 23 CSV files.
 
-Greedy-versus-optimizer and feasibility-versus-density are not drawn. Those
-series are Experiments B and G, and this run has no measurements for them.
-Matplotlib is not a project dependency. The charts are written with the
+``greedy_vs_optimizer.png`` and ``feasibility_vs_charger_density.png`` draw
+Experiments B and G (H9). Matplotlib is not a project dependency. The charts are written with the
 standard library.
 """
 
@@ -17,7 +16,7 @@ from experiments.astar_summary import instance_pairs
 from experiments.scaling import quartiles
 
 # 5x7 glyphs, row-major, '1' is ink. Unknown characters leave a blank cell.
-_FONT = {
+FONT = {
     " ": ("00000",) * 7,
     "-": ("00000", "00000", "00000", "11111", "00000", "00000", "00000"),
     ".": ("00000", "00000", "00000", "00000", "00000", "01100", "01100"),
@@ -67,20 +66,16 @@ MEASURED_PLOTS = (
     "trip_time_vs_battery_capacity.png",
     "states_astar_vs_labelsetting.png",
     "astar_savings_by_factor.png",
-)
-
-# Experiments B and G have no measured rows, so these Section 23 names are not written.
-OMITTED_PLOTS = (
     "greedy_vs_optimizer.png",
     "feasibility_vs_charger_density.png",
 )
 
-_LABEL = (20, 90, 160)
-_ASTAR = (200, 90, 30)
-_ROUNDUP = (36, 120, 72)
-_INK = (35, 35, 35)
-_GRID = (226, 226, 226)
-_WHITE = (255, 255, 255)
+LABEL = (20, 90, 160)
+ASTAR = (200, 90, 30)
+ROUNDUP = (36, 120, 72)
+INK = (35, 35, 35)
+GRID = (226, 226, 226)
+WHITE = (255, 255, 255)
 Series = list[tuple[str, tuple[int, int, int], list[tuple[float, float]]]]
 # (color, [(x, y)], pixel shift) and (color, [(x, low, high)], pixel shift).
 Scatter = tuple[tuple[int, int, int], list[tuple[float, float]], int]
@@ -95,67 +90,81 @@ def write_plots(rows_by_file: dict[str, list[dict[str, str]]], directory: Path) 
     capacity = rows_by_file["battery_capacity.csv"]
     astar = rows_by_file["astar_comparison.csv"]
     written = [
-        _line_plot(
+        line_plot(
             directory / "runtime_vs_soc_resolution.png",
             "RUNTIME VS SOC STEP",
             "SOC STEP KWH",
             "RUNTIME MS",
-            _soc_series(soc, "runtime_ms"),
+            soc_series(soc, "runtime_ms"),
             log_x=True,
         ),
-        _line_plot(
+        line_plot(
             directory / "states_vs_soc_resolution.png",
             "STATES VS SOC STEP",
             "SOC STEP KWH",
             "STATES",
-            _soc_series(soc, "states_expanded"),
+            soc_series(soc, "states_expanded"),
             log_x=True,
         ),
-        _line_plot(
+        line_plot(
             directory / "objective_error_vs_soc_resolution.png",
             "OBJECTIVE ERROR VS SOC STEP",
             "SOC STEP KWH",
             "ERROR MIN",
-            _error_series(soc),
+            error_series(soc),
             log_x=True,
         ),
-        _scaling_plot(
+        scaling_plot(
             directory / "runtime_vs_chargers.png",
             "MEDIAN RUNTIME VS CHARGERS",
             "RUNTIME MS",
             scaling,
             "runtime_ms",
         ),
-        _scaling_plot(
+        scaling_plot(
             directory / "states_vs_chargers.png",
             "MEDIAN STATES VS CHARGERS",
             "STATES",
             scaling,
             "states_expanded",
         ),
-        _line_plot(
+        line_plot(
             directory / "trip_time_vs_battery_capacity.png",
             "TRIP TIME VS CAPACITY",
             "CAPACITY KWH",
             "TRIP TIME MIN",
-            _feasible_series(capacity, "capacity_kwh", "total_time_minutes"),
+            feasible_series(capacity, "capacity_kwh", "total_time_minutes"),
             log_x=False,
             zero_y=False,
         ),
-        _astar_scatter_plot(directory / "states_astar_vs_labelsetting.png", astar),
-        _astar_savings_plot(directory / "astar_savings_by_factor.png", astar),
+        astar_scatter_plot(directory / "states_astar_vs_labelsetting.png", astar),
+        astar_savings_plot(directory / "astar_savings_by_factor.png", astar),
     ]
+    written.extend(write_h9_plots(rows_by_file, directory))
     return written
 
 
-def _soc_series(rows: list[dict[str, str]], field: str) -> Series:
+def write_h9_plots(rows_by_file: dict[str, list[dict[str, str]]], directory: Path) -> list[Path]:
+    """Draw the Experiment B and G charts from their CSV rows."""
+    directory.mkdir(parents=True, exist_ok=True)
+    return [
+        greedy_scatter_plot(
+            directory / "greedy_vs_optimizer.png", rows_by_file["greedy_comparison.csv"]
+        ),
+        feasibility_plot(
+            directory / "feasibility_vs_charger_density.png", rows_by_file["charger_density.csv"]
+        ),
+    ]
+
+
+def soc_series(rows: list[dict[str, str]], field: str) -> Series:
     series = []
-    for family, color in (("sample", _LABEL), ("roundup", _ROUNDUP)):
+    for family, color in (("sample", LABEL), ("roundup", ROUNDUP)):
         points = []
         for row in rows:
             if row["algorithm"] != "label_setting":
                 continue
-            if _note(row).get("family") != family:
+            if note(row).get("family") != family:
                 continue
             if row["status"] not in {"FEASIBLE", "INFEASIBLE"}:
                 continue
@@ -166,14 +175,14 @@ def _soc_series(rows: list[dict[str, str]], field: str) -> Series:
     return series
 
 
-def _error_series(rows: list[dict[str, str]]) -> Series:
+def error_series(rows: list[dict[str, str]]) -> Series:
     series = []
-    for family, color in (("sample", _LABEL), ("roundup", _ROUNDUP)):
+    for family, color in (("sample", LABEL), ("roundup", ROUNDUP)):
         points = []
         for row in rows:
             if row["algorithm"] != "label_setting":
                 continue
-            info = _note(row)
+            info = note(row)
             if info.get("family") != family:
                 continue
             raw = info.get("objective_error_minutes", "")
@@ -186,7 +195,7 @@ def _error_series(rows: list[dict[str, str]]) -> Series:
     return series
 
 
-def _scaling_plot(
+def scaling_plot(
     path: Path,
     title: str,
     ylabel: str,
@@ -202,8 +211,8 @@ def _scaling_plot(
     scatter: list[Scatter] = []
     whiskers: list[Whisker] = []
     for algorithm, label, color, shift in (
-        ("label_setting", "LABEL SETTING", _LABEL, -6),
-        ("astar", "ASTAR", _ASTAR, 6),
+        ("label_setting", "LABEL SETTING", LABEL, -6),
+        ("astar", "ASTAR", ASTAR, 6),
     ):
         grouped: dict[float, list[float]] = {}
         for row in rows:
@@ -220,8 +229,8 @@ def _scaling_plot(
             dots.extend((count, value) for value in grouped[count])
         series.append((label, color, medians))
         whiskers.append((color, bars, shift))
-        scatter.append((_light(color), dots, shift))
-    return _line_plot(
+        scatter.append((light(color), dots, shift))
+    return line_plot(
         path,
         title,
         "CHARGERS",
@@ -233,12 +242,12 @@ def _scaling_plot(
     )
 
 
-def _light(color: tuple[int, int, int]) -> tuple[int, int, int]:
+def light(color: tuple[int, int, int]) -> tuple[int, int, int]:
     red, green, blue = (round(channel + (255 - channel) * 0.55) for channel in color)
     return red, green, blue
 
 
-def _feasible_series(
+def feasible_series(
     rows: list[dict[str, str]],
     x_key: str,
     y_key: str,
@@ -251,10 +260,10 @@ def _feasible_series(
     points.sort()
     if not points:
         return []
-    return [("LABEL SETTING", _LABEL, points)]
+    return [("LABEL SETTING", LABEL, points)]
 
 
-def _line_plot(
+def line_plot(
     path: Path,
     title: str,
     xlabel: str,
@@ -286,15 +295,15 @@ def _line_plot(
     return path
 
 
-_GEOMETRY_COLORS = {"straight": _LABEL, "curved": _ROUNDUP, "detour": _ASTAR}
-_DIAGONAL = (120, 120, 120)
+GEOMETRY_COLORS = {"straight": LABEL, "curved": ROUNDUP, "detour": ASTAR}
+DIAGONAL = (120, 120, 120)
 
 
-def _astar_scatter_plot(path: Path, rows: list[dict[str, str]]) -> Path:
+def astar_scatter_plot(path: Path, rows: list[dict[str, str]]) -> Path:
     """One point per Experiment J instance. A point below the diagonal means A* expanded fewer."""
     pairs = instance_pairs(rows)
     series: Series = []
-    for geometry, color in _GEOMETRY_COLORS.items():
+    for geometry, color in GEOMETRY_COLORS.items():
         points = [
             (float(p["ls_states"]), float(p["astar_states"]))
             for p in pairs
@@ -304,7 +313,7 @@ def _astar_scatter_plot(path: Path, rows: list[dict[str, str]]) -> Path:
             series.append((geometry.upper(), color, points))
     if series:
         top = max(max(x for x, _ in data) for _, _, data in series)
-        series.append(("SAME STATES", _DIAGONAL, [(0.0, 0.0), (top, top)]))
+        series.append(("SAME STATES", DIAGONAL, [(0.0, 0.0), (top, top)]))
     width, height = 880, 520
     canvas = _Canvas(width, height)
     canvas.panel(
@@ -317,26 +326,26 @@ def _astar_scatter_plot(path: Path, rows: list[dict[str, str]]) -> Path:
         width - 36,
         height - 56,
         log_x=False,
-        markers_only=frozenset(geometry.upper() for geometry in _GEOMETRY_COLORS),
+        markers_only=frozenset(geometry.upper() for geometry in GEOMETRY_COLORS),
     )
     canvas.save(path)
     return path
 
 
-def _astar_savings_plot(path: Path, rows: list[dict[str, str]]) -> Path:
+def astar_savings_plot(path: Path, rows: list[dict[str, str]]) -> Path:
     """Median state reduction and interquartile range for every level of every factor."""
     pairs = [p for p in instance_pairs(rows) if p["feasible"] and p["reduction"] is not None]
     groups = (
-        ("N", _LABEL, [(str(n), lambda p, n=n: p["size"] == n) for n in (10, 25, 50)]),
+        ("N", LABEL, [(str(n), lambda p, n=n: p["size"] == n) for n in (10, 25, 50)]),
         (
             "",
-            _ROUNDUP,
-            [(g.upper(), lambda p, g=g: p["geometry"] == g) for g in _GEOMETRY_COLORS],
+            ROUNDUP,
+            [(g.upper(), lambda p, g=g: p["geometry"] == g) for g in GEOMETRY_COLORS],
         ),
-        ("SOC", _ASTAR, [(s, lambda p, s=s: p["soc_step"] == s) for s in ("1", "4")]),
+        ("SOC", ASTAR, [(s, lambda p, s=s: p["soc_step"] == s) for s in ("1", "4")]),
         (
             "",
-            _DIAGONAL,
+            DIAGONAL,
             [
                 ("HOMOG", lambda p: p["speed"] == "homogeneous"),
                 ("HETERO", lambda p: p["speed"] == "heterogeneous"),
@@ -352,10 +361,98 @@ def _astar_savings_plot(path: Path, rows: list[dict[str, str]]) -> Path:
                 bars.append((f"{prefix} {label}".strip(), color, middle, low, high))
     width, height = 880, 520
     canvas = _Canvas(width, height)
-    canvas.text(48, 8, "MEDIAN STATE REDUCTION BY FACTOR", _INK, 2)
+    canvas.text(48, 8, "MEDIAN STATE REDUCTION BY FACTOR", INK, 2)
     canvas.reduction_bars(bars, 48, 48, width - 36, height - 56)
     canvas.save(path)
     return path
+
+
+SPEED_COLORS = {
+    "uniform_50": ("50 KW", ASTAR),
+    "mixed_50_150": ("MIXED", ROUNDUP),
+    "uniform_150": ("150 KW", LABEL),
+}
+
+
+def greedy_scatter_plot(path: Path, rows: list[dict[str, str]]) -> Path:
+    """One point per Experiment B instance that both algorithms solved.
+
+    A point below the diagonal means the optimizer's trip is shorter than the
+    FRC baseline's. Instances where FRC finds no route have no x value and are
+    not drawn; they are counted in ``greedy_summary.json``.
+    """
+    times: dict[str, dict[str, float]] = {}
+    speeds: dict[str, str] = {}
+    for row in rows:
+        if row["status"] != "FEASIBLE":
+            continue
+        times.setdefault(row["instance_id"], {})[row["algorithm"]] = float(
+            row["total_time_minutes"]
+        )
+        speeds[row["instance_id"]] = note(row).get("speed", "")
+    series: Series = []
+    for speed, (label, color) in SPEED_COLORS.items():
+        points = [
+            (pair["greedy_frc"], pair["label_setting"])
+            for instance_id, pair in times.items()
+            if speeds[instance_id] == speed and len(pair) == 2
+        ]
+        if points:
+            series.append((label, color, points))
+    if series:
+        low = min(min(x, y) for _, _, data in series for x, y in data)
+        high = max(max(x, y) for _, _, data in series for x, y in data)
+        series.append(("SAME TIME", DIAGONAL, [(low, low), (high, high)]))
+    width, height = 880, 520
+    canvas = _Canvas(width, height)
+    canvas.panel(
+        "OPTIMIZER VS FRC TRIP TIME",
+        "FRC TRIP TIME MIN",
+        "OPTIMIZER MIN",
+        series,
+        48,
+        36,
+        width - 36,
+        height - 56,
+        log_x=False,
+        zero_y=False,
+        markers_only=frozenset(label for label, _ in SPEED_COLORS.values()),
+    )
+    canvas.save(path)
+    return path
+
+
+def feasibility_plot(path: Path, rows: list[dict[str, str]]) -> Path:
+    """Share of instances with a feasible plan at each station count.
+
+    The two curves coincide when FRC finds a route wherever the optimizer does,
+    so the FRC points are drawn 4% to the right of their count to stay visible.
+    """
+    series: Series = []
+    for algorithm, label, color, nudge in (
+        ("label_setting", "OPTIMIZER", LABEL, 1.0),
+        ("greedy_frc", "FRC SHIFTED 4 PCT", ASTAR, 1.04),
+    ):
+        totals: dict[float, list[int]] = {}
+        for row in rows:
+            if row["algorithm"] != algorithm or row["status"] not in {"FEASIBLE", "INFEASIBLE"}:
+                continue
+            counts = totals.setdefault(float(row["chargers"]), [0, 0])
+            counts[0] += 1
+            counts[1] += 1 if row["status"] == "FEASIBLE" else 0
+        points = [
+            (count * nudge, 100.0 * ok / total) for count, (total, ok) in sorted(totals.items())
+        ]
+        if points:
+            series.append((label, color, points))
+    return line_plot(
+        path,
+        "FEASIBLE TRIPS VS CHARGER COUNT",
+        "STATIONS",
+        "FEASIBLE PCT",
+        series,
+        log_x=True,
+    )
 
 
 class _Canvas:
@@ -365,7 +462,7 @@ class _Canvas:
         self.rows = [bytearray([255, 255, 255]) * width for _ in range(height)]
 
     def save(self, path: Path) -> None:
-        path.write_bytes(_png(self.width, self.height, self.rows))
+        path.write_bytes(png(self.width, self.height, self.rows))
 
     def dot(self, x: int, y: int, color: tuple[int, int, int]) -> None:
         if 0 <= x < self.width and 0 <= y < self.height:
@@ -375,7 +472,7 @@ class _Canvas:
     def text(self, x: int, y: int, message: str, color: tuple[int, int, int], scale: int) -> None:
         cursor = x
         for character in message:
-            glyph = _FONT.get(character, _FONT[" "])
+            glyph = FONT.get(character, FONT[" "])
             for row, bits in enumerate(glyph):
                 for col, bit in enumerate(bits):
                     if bit != "1":
@@ -430,11 +527,11 @@ class _Canvas:
         """
         scatter = scatter or []
         whiskers = whiskers or []
-        self.text(left, top - 28, title, _INK, 2)
-        self._frame(left, top, right, bottom)
+        self.text(left, top - 28, title, INK, 2)
+        self.frame(left, top, right, bottom)
         points = [point for _, _, data in series for point in data]
         if not points:
-            self.text(left + 8, top + 8, "NO MEASURED POINTS", _INK, 2)
+            self.text(left + 8, top + 8, "NO MEASURED POINTS", INK, 2)
             return
         xs = [point[0] for point in points]
         ys = [point[1] for point in points]
@@ -452,10 +549,10 @@ class _Canvas:
             x_max = x_min + 1
         for fraction in (0.25, 0.5, 0.75):
             y = round(bottom - fraction * (bottom - top))
-            self.line(left, y, right, y, _GRID)
+            self.line(left, y, right, y, GRID)
         for color, data, shift in scatter:
             for x, y in data:
-                px, py = self._map(
+                px, py = self.map(
                     x, y, left, top, right, bottom, x_min, x_max, y_min, y_max, log_x
                 )
                 self.dot(px + shift, py, color)
@@ -463,10 +560,10 @@ class _Canvas:
                 self.dot(px + shift, py + 1, color)
         for color, data, shift in whiskers:
             for x, low, high in data:
-                px, low_y = self._map(
+                px, low_y = self.map(
                     x, low, left, top, right, bottom, x_min, x_max, y_min, y_max, log_x
                 )
-                _, high_y = self._map(
+                _, high_y = self.map(
                     x, high, left, top, right, bottom, x_min, x_max, y_min, y_max, log_x
                 )
                 self.line(px + shift, low_y, px + shift, high_y, color)
@@ -475,35 +572,35 @@ class _Canvas:
         for name, color, data in series:
             ordered = sorted(data)
             mapped = [
-                self._map(x, y, left, top, right, bottom, x_min, x_max, y_min, y_max, log_x)
+                self.map(x, y, left, top, right, bottom, x_min, x_max, y_min, y_max, log_x)
                 for x, y in ordered
             ]
             if name not in markers_only:
                 for start, end in zip(mapped, mapped[1:], strict=False):
                     self.line(start[0], start[1], end[0], end[1], color)
-            if name == "SAME STATES":
+            if name.startswith("SAME"):
                 continue
             for x, y in mapped:
                 self.marker(x, y, color)
         self.text(
             left,
             bottom + 8,
-            f"{xlabel}  {_axis_num(min(xs))}-{_axis_num(max(xs))}",
-            _INK,
+            f"{xlabel}  {axis_num(min(xs))}-{axis_num(max(xs))}",
+            INK,
             1,
         )
         self.text(
             left,
             top + 4,
-            f"{ylabel}  {_axis_num(min(ys))}-{_axis_num(max(ys))}",
-            _INK,
+            f"{ylabel}  {axis_num(min(ys))}-{axis_num(max(ys))}",
+            INK,
             1,
         )
         legend_x = right - 150
         for index, (name, color, _) in enumerate(series):
             y = top + 8 + index * 16
             self.line(legend_x, y + 4, legend_x + 16, y + 4, color)
-            self.text(legend_x + 20, y, name, _INK, 1)
+            self.text(legend_x + 20, y, name, INK, 1)
 
     def reduction_bars(
         self,
@@ -516,9 +613,9 @@ class _Canvas:
         """Bars at ``median`` with interquartile whiskers. Each item is
         ``(label, color, median, q1, q3)``. A negative median hangs below the zero line.
         """
-        self._frame(left, top, right, bottom)
+        self.frame(left, top, right, bottom)
         if not bars:
-            self.text(left + 8, top + 8, "NO MEASURED POINTS", _INK, 2)
+            self.text(left + 8, top + 8, "NO MEASURED POINTS", INK, 2)
             return
         low = min(0.0, min(item[3] for item in bars))
         high = max(item[4] for item in bars) * 1.15
@@ -529,25 +626,25 @@ class _Canvas:
             return bottom - round((value - low) / (high - low) * (bottom - top))
 
         zero = row(0.0)
-        self.line(left, zero, right, zero, _INK)
+        self.line(left, zero, right, zero, INK)
         slot = (right - left) / len(bars)
         for index, (label, color, middle, first, third) in enumerate(bars):
             center = round(left + slot * (index + 0.5))
             for y in range(min(zero, row(middle)), max(zero, row(middle)) + 1):
                 self.line(center - 10, y, center + 10, y, color)
-            self.line(center, row(first), center, row(third), _INK)
-            self.line(center - 4, row(first), center + 4, row(first), _INK)
-            self.line(center - 4, row(third), center + 4, row(third), _INK)
-            value = _axis_num(middle)
-            self.text(center - 3 * len(value), row(third) - 12, value, _INK, 1)
-            self.text(center - 3 * len(label), bottom + 8, label, _INK, 1)
-        self.text(left + 4, top + 4, "STATES REDUCTION PCT  BAR MEDIAN  WHISKERS IQR", _INK, 1)
+            self.line(center, row(first), center, row(third), INK)
+            self.line(center - 4, row(first), center + 4, row(first), INK)
+            self.line(center - 4, row(third), center + 4, row(third), INK)
+            value = axis_num(middle)
+            self.text(center - 3 * len(value), row(third) - 12, value, INK, 1)
+            self.text(center - 3 * len(label), bottom + 8, label, INK, 1)
+        self.text(left + 4, top + 4, "STATES REDUCTION PCT  BAR MEDIAN  WHISKERS IQR", INK, 1)
 
-    def _frame(self, left: int, top: int, right: int, bottom: int) -> None:
-        self.line(left, top, left, bottom, _INK)
-        self.line(left, bottom, right, bottom, _INK)
+    def frame(self, left: int, top: int, right: int, bottom: int) -> None:
+        self.line(left, top, left, bottom, INK)
+        self.line(left, bottom, right, bottom, INK)
 
-    def _map(
+    def map(
         self,
         x: float,
         y: float,
@@ -567,11 +664,11 @@ class _Canvas:
         return px, py
 
 
-def _axis_num(value: float) -> str:
+def axis_num(value: float) -> str:
     return format(value, ".4g")
 
 
-def _note(row: dict[str, str]) -> dict[str, str]:
+def note(row: dict[str, str]) -> dict[str, str]:
     found = {}
     for part in row.get("note", "").split(";"):
         if "=" not in part:
@@ -581,7 +678,7 @@ def _note(row: dict[str, str]) -> dict[str, str]:
     return found
 
 
-def _png(width: int, height: int, rows: list[bytearray]) -> bytes:
+def png(width: int, height: int, rows: list[bytearray]) -> bytes:
     def chunk(tag: bytes, payload: bytes) -> bytes:
         check = zlib.crc32(tag + payload) & 0xFFFFFFFF
         return struct.pack(">I", len(payload)) + tag + payload + struct.pack(">I", check)
