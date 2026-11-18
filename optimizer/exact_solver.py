@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import time
 from decimal import Decimal
+from typing import NamedTuple
 
 from optimizer.model import (
     InputError,
@@ -28,6 +29,15 @@ from optimizer.model import (
 
 Label = tuple[int, int, float]
 RecordKey = tuple[str, int]
+
+
+class _Road(NamedTuple):
+    """One outgoing edge with its discretized energy and integer drive time."""
+
+    to: str
+    distance_miles: float
+    energy_steps: int
+    drive_ms: int
 
 
 def solve(graph: dict, config: dict) -> dict:
@@ -47,13 +57,22 @@ def solve(graph: dict, config: dict) -> dict:
     if origin not in nodes or destination not in nodes:
         raise InputError("origin and destination must be nodes in the graph")
 
-    outgoing: dict[str, list[dict]] = {}
+    # Energy steps and drive milliseconds depend on the edge alone, so they are
+    # computed once here (Decimal arithmetic) and reused by every visit.
+    outgoing: dict[str, list[_Road]] = {}
     for edge in graph["edges"]:
         if edge["from"] not in nodes or edge["to"] not in nodes:
             raise InputError(
                 f"edge {edge['from']!r} -> {edge['to']!r} names an unknown node"
             )
-        outgoing.setdefault(edge["from"], []).append(edge)
+        outgoing.setdefault(edge["from"], []).append(
+            _Road(
+                edge["to"],
+                edge["distance_miles"],
+                edge_energy_steps(edge["distance_miles"], config),
+                minutes_to_ms(edge["drive_time_minutes"]),
+            )
+        )
 
     step_ms = {
         node_id: _charge_step_ms(node, delta_e) for node_id, node in nodes.items()
@@ -114,18 +133,18 @@ def solve(graph: dict, config: dict) -> dict:
         actions.pop()
 
     def _try_drives(node: str, battery: int, label: Label) -> None:
-        for edge in outgoing.get(node, ()):
-            energy = edge_energy_steps(edge["distance_miles"], config)
+        for road in outgoing.get(node, ()):
+            energy = road.energy_steps
             arrival = battery - energy
             if arrival < reserve:
                 continue
-            drive_ms = minutes_to_ms(edge["drive_time_minutes"])
+            drive_ms = road.drive_ms
             actions.append(
                 {
                     "type": "drive",
                     "from": node,
-                    "to": edge["to"],
-                    "distance_miles": edge["distance_miles"],
+                    "to": road.to,
+                    "distance_miles": road.distance_miles,
                     "duration_ms": drive_ms,
                     "energy_steps": energy,
                     "soc_before_steps": battery,
@@ -133,10 +152,10 @@ def solve(graph: dict, config: dict) -> dict:
                 }
             )
             visit(
-                edge["to"],
+                road.to,
                 arrival,
                 0,
-                (label[0] + drive_ms, label[1], label[2] + edge["distance_miles"]),
+                (label[0] + drive_ms, label[1], label[2] + road.distance_miles),
             )
             actions.pop()
 
