@@ -19,7 +19,12 @@ ROOT = Path(__file__).resolve().parents[1]
 MOCK_DIR = ROOT / "visualizer" / "mock_results"
 MOCK_OPTIMIZED = MOCK_DIR / "algorithm_result.json"
 MOCK_GREEDY = MOCK_DIR / "algorithm_result_greedy.json"
-SCENARIO_DIRS = sorted((ROOT / "results").glob("*/"))
+SCENARIO_DIRS = sorted(
+    folder
+    for folder in (ROOT / "results").glob("*/")
+    if (folder / "algorithm_result_greedy.json").is_file()
+    and (folder / "algorithm_result_label_setting.json").is_file()
+)
 
 
 def result(algorithm: str, status: str = "FEASIBLE", **overrides) -> dict:

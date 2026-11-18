@@ -1,4 +1,4 @@
-.PHONY: test experiments demo
+.PHONY: test experiments demo real-results demo-real
 
 PYTHON ?= python
 
@@ -10,3 +10,9 @@ experiments:
 
 demo:
 	$(PYTHON) -m visualizer.app
+
+real-results:
+	$(PYTHON) -m experiments.real_data --scenarios data/processed --out results/real
+
+demo-real:
+	$(PYTHON) -m visualizer.app --scenarios data/processed --results results/real
