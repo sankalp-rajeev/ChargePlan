@@ -465,13 +465,34 @@ Default run, seed 505, 3 repeats. `--no-sweeps` skips B, F, G, and H. Experiment
 
 ## What does not run
 
-These files stay a single `UNAVAILABLE` row. The default run does not replace them with measurements, and it does not replace C, D, or E with that placeholder:
+### Experiment I
 
+Experiment I runs the optimizer and the baseline on every folder of the H5 scenarios under `data/processed/` (`canonical_graph.json` and `trip_config.json`, plus the optional `scenario_meta.json` for the note). A row pair has `route=`, `stops_at=`, and `soc_profile_kwh=`. `data/processed/` is gitignored. When the directory is missing or holds no scenario, `real_routes.csv` is a single `UNAVAILABLE` row. A folder that does not load becomes an `UNAVAILABLE` row that names the error, and the other folders still run. The S9 runner `python -m experiments.real_data` (on `origin/main`, not on this branch) writes `results/real/` with all four algorithms and an independent plan check. It is a separate output, and `real_routes.csv` here is the Section 23 file. Run both when the branches meet. Neither replaces the other.
 - `greedy_comparison.csv` — FRC baseline, H4. No `greedy_vs_optimizer.png`.
 - `initial_soc.csv`, `charger_density.csv`, `charger_speed.csv` — Experiments F, G, and H (H9). No `feasibility_vs_charger_density.png`.
 - `real_routes.csv` in `results/` — `run_all` still writes the placeholder. Real rows come from `python -m experiments.real_data` (see S9 above) into `results/real/real_routes.csv`.
 
-`greedy_baseline.solve` is not called.
+### Measurements
+
+Default run, seed 505, 3 repeats. `--no-sweeps` skips B, F, G, and H. Experiment I always runs when its directory exists. All numbers are from `results/greedy_summary.json`.
+
+- **B.** 270 instances: 267 are feasible for both algorithms, 3 for neither (sparse, 40 kWh, 40% start). The baseline never failed where the optimizer found a route, and the optimizer was never slower. The optimizer was strictly faster on 265 of the 267 shared-feasible instances. Median improvement 13.4% (IQR 9.4-19.4%, max 36.4%), pooled 14.5%. Median trip time 274.1 minutes against 328.2. By factor, the median improvement is 11.8% (sparse), 12.6% (medium), 18.6% (dense); 12.5% (50 kW), 17.8% (mixed), 13.2% (150 kW); 12.7% (40% SOC), 14.7% (80%); 11.6% (40 kWh), 12.9% (60), 17.4% (80). The largest gaps are on dense layouts, mixed speeds, and the 80 kWh battery. I did not isolate why.
+- **F.** Median optimizer trip time 271.1, 265.1, 260.3, 255.5, and 250.5 minutes at 20% to 100%, and median charging time 30.4, 25.6, 20.8, 15.6, and 10.8 minutes. All 25 instances are feasible. The optimizer uses 1 to 4 stops (2 is the most common at 20% to 60%, 1 at 80% and 100%). A pool uses 1 to 3 different routes across the five levels (2, 3, 2, 1, 2), so the route does change with the starting charge. The median improvement over the baseline is 15% at 20% and 100%, and 21-25% in between.
+- **G.** The optimizer's feasible share is 5%, 30%, 55%, 65%, 90%, then 100% at 8 stations and above (for 2, 3, 4, 5, 6, 8+ stations). By tier: sparse 30%, medium 88.8%, dense 100%. The baseline's share is identical at every count: on these range-based corridors it found a route exactly when the optimizer did. Median optimizer states expanded grow from 1 (2 stations, where 19 of 20 are infeasible) to 3,319 (50 stations), and the median trip time of feasible instances falls from 329.1 to 265.9 minutes.
+- **H.** Median optimizer trip time 296.6 (all 50 kW), 266.9 (all 100), 260.3 (mixed), and 256.9 minutes (all 150). The mixed network is faster than the uniform one of the same mean rate in the optimizer's plans (median 6.7 minutes faster per pool), because its median `fast_stop_share` is 1.0 (every stop at a 150 kW station). The baseline's median share is 0.5, the share of fast stations. Its mixed-minus-uniform gap has a median of 6.0 minutes faster but an interquartile range from -10.5 to +29.5 minutes, so it gets no reliable benefit from the mix. The median improvement of the optimizer over the baseline is 18.1% (50 kW), 19.4% (100), 23.3% (mixed), 19.8% (150).
+- **I.** All 5 scenarios on this machine (snapshot 2026-11-09, haversine roads) are feasible for both. The optimizer matches the baseline on the no-charge and one-stop scenarios (48.8 and 126.7 minutes), is 1.2% faster on `multi_stop` (347.5 against 351.7 minutes, 2 stops against 1), 7.0% faster on `sparse` (711.6 against 765.1), and 61.1% faster on `mixed_speeds` (369.6 against 950.4 minutes), where the baseline picks 6.5 and 7.2 kW chargers. The plans on `multi_stop` and `sparse` have more stops than the baseline's, because time is the first term of the label.
+
+### Limitations
+
+- A designed synthetic family, with one trip. The percentages describe it and are not a claim about other corridors or vehicles. Experiment I is the only real-data comparison, with 5 scenarios.
+- On range-based roads, every station can reach every farther station within range, so the baseline never gets stuck. The baseline's feasibility gap in PRD Section 12.2 (it "can fail to find a route that exists") needs sparser, directed connectivity, as in the T16 failure graph. It did not occur in G or I. G therefore shows no feasibility gap between the algorithms.
+- G's counts are small at the sparse end, and 20 pools give a feasibility share with steps of 5%.
+- Improvement depends on the baseline's rate-blind tie-break and on the 150 kW threshold for a fast stop.
+- The baseline is deliberately simple. A stronger greedy rule (the stretch item in Section 12.2) would shrink these gaps.
+- Runtime is not reported as a finding. The baseline does a few decisions and the optimizer searches thousands of states, so the runtime gap is large by construction.
+
+## What does not run
+
 With `--no-sweeps`, B, C, D, E, F, G, H, and J stay a single `UNAVAILABLE` row each. Experiment I writes `real_routes.csv` from the scenarios under `--scenarios` (default `data/processed`) and leaves a single `UNAVAILABLE` row when there are none. `run()` called without `scenarios` also leaves it `UNAVAILABLE`, so tests do not depend on a gitignored directory.
 
 ## Plots
