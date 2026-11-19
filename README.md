@@ -12,13 +12,14 @@ Full specification: [docs/PRD.md](docs/PRD.md). Task list: [docs/roadmap.md](doc
 contracts/          JSON schemas (graph, trip config, algorithm result)
 optimizer/          model.py and cli.py (shared), label-setting and A*, exact solver, FRC stub
 data_pipeline/      AFDC stations, OSM routing, canonical-graph export
-visualizer/         map, SOC chart, greedy comparison; mock_results/ until real output exists
+visualizer/         map, SOC chart, greedy comparison, scenario browser; mock_results/ as a fallback
 data/synthetic/     schema samples used by the contract tests
 data/raw/           local snapshots (gitignored)
 data/processed/     reduced graphs (gitignored)
 experiments/        benchmark runner (S6) and sweeps A, C, D, E, J (S7)
 tests/              contract, exact, synthetic T1–T16, and A* agreement tests
-results/            experiment CSVs (gitignored)
+results/            experiment CSVs and results/real S9 result files (gitignored)
+docs/screenshots/h11/   demo screenshots of the visualizer on the real H5 scenarios
 plots/              experiment figures (gitignored)
 docs/PRD.md         product requirements
 docs/complexity-analysis.md   state space, time, space, and discretization
@@ -33,7 +34,11 @@ python -m pip install -r requirements.txt
 make test            # pytest, including schema checks
 make experiments     # python -m experiments.run_all
 make demo            # python -m visualizer.app (Streamlit route map, SOC chart, timeline, trip summary, greedy comparison)
+make real-results    # python -m experiments.real_data: S9 result files for the H5 scenarios into results/real
+make demo-real       # visualizer on those files: pick the scenario and optimizer in the sidebar
 ```
+
+The visualizer only reads result files. `make demo-real` lists each folder in `data/processed`, reads `label_setting.json`, `astar.json`, and `exact.json` (when the exact solver ran) as the optimized side, and compares them with `greedy.json` (the `greedy_frc` baseline) from the same folder in `results/real`. Run `python -m visualizer.app --scenario multi_stop_detroit_chicago --optimizer astar` to open one scenario directly. A scenario with no results, or one the S9 runner marked `FAILED`, shows what to run instead of a plot, and an `INFEASIBLE` result shows as "no feasible plan".
 
 Shared optimizer entry point:
 
