@@ -409,40 +409,14 @@ H5's default backend is `haversine`. Its road distances are straight-line distan
 
 The solvers compute each edge's discretized energy and integer drive time once, before the search, instead of on every relaxation. Labels, status, `states_expanded`, and `peak_states_stored` are unchanged; `tests/test_precompute_equivalence.py` compares them with outputs recorded from the earlier code on the sample and 50 seeded graphs. On the 50-charger Experiment D instance (1,700 edges) a label-setting solve fell from about 0.28 s to 0.04 s.
 
-## Experiments B, F, G, H, and I: optimizer against the FRC baseline
-
-These five experiments are `experiments/greedy_comparison.py` (runners and summaries) and `experiments/greedy_suite.py` (instances). Every instance runs `label_setting` and `greedy` (the farthest-reachable-charger baseline of PRD Section 12, `greedy_frc`) through `optimizer.cli.run_algorithm` on the same graph and config objects. Each instance writes two rows. The optimizer row carries `improvement_pct=100*(greedy - optimizer)/greedy` (blank when either has no route), `greedy_status`, `outcome`, `charging_minutes`, and `stop_rates_kw`; the greedy row carries `optimizer_status`. `outcome` is `both_feasible`, `greedy_infeasible`, `both_infeasible`, or `optimizer_infeasible`. Runtime is the median of 3 repeats, and states, labels, and routes must repeat or the run stops. `states_expanded` for the baseline is its number of decisions, so it is not comparable with the optimizer's label count.
-
-### Dominance check
-
-The baseline's plan is legal under the same discretization, and label-setting is optimal on total time, so the optimizer must find a route whenever the baseline does and cannot be slower. An instance that breaks this has `agreement=false` and `dominance=VIOLATED` in its note, is listed on `make experiments`'s error line, and the run exits 1. It would indicate a bug in one of the solvers. It did not happen.
-
-### Instances (`greedy_suite.py`)
-
-- **Trip.** Detroit to Chicago (about 237 straight-line miles), reserve 4 kWh, 0.30 kWh per mile, 1 kWh SOC step. Initial SOC is a percentage of the capacity, so every start is a whole number of kWh. A replicate is one seeded pool, drawn from `random.Random` streams keyed by `chargeplan-experiment-h9:<seed>:<replicate>`; `--seed` applies, and the same seed repeats every column except runtime.
-- **Stations.** Positions come from the Experiment D pool generator, so a layout of `n` stations is a prefix of the pool and is spread along the corridor with a minority of detour candidates. Rates are set by a rate profile and do not depend on the count.
-- **Rate profiles.** `uniform_50`, `uniform_100`, `uniform_150` give every station that rate. `mixed_50_150` makes half of each pool block 50 kW and half 150 kW, shuffled, so its mean equals `uniform_100`.
-- **Roads.** Range-based, as in D. A directed road runs between any two nodes (nothing into the origin or out of the destination) when its discretized energy fits a full battery above the reserve. A pair's length factor (1.05-1.35 times the straight line, rounded up to 0.001 mile) and speed (45-70 mph) are drawn once per replicate and reused by every variant that contains both ends. Variants therefore share roads and differ only in the factor under test. These roads are synthetic. They are not OpenStreetMap.
-
-### Experiment B
-
-PRD Section 22 asks for the improvement of the optimizer over the baseline as charger layout, charger speed, initial SOC, and battery capacity change. B crosses all four: layout (8, 16, or 32 stations, called sparse, medium, dense), speed (`uniform_50`, `mixed_50_150`, `uniform_150`), initial SOC (40% or 80%), and capacity (40, 60, or 80 kWh). That is 54 cells times 5 pools, 270 instances and 540 rows. The metrics are total time, charging time, stops, and percentage improvement.
-
-### Experiment F
-
-Section 22 asks for the route, stops, charging time, and total time of one route at 20%, 40%, 60%, 80%, and 100% initial SOC. F uses a 60 kWh battery and 25 mixed-speed stations (`mixed_50_150`), 5 pools, so each SOC level shares its layout and roads. Rows carry `route=` (node ids), `stops_at=`, and `soc_profile_kwh=` (SOC at the start, then after every drive and charge event). The summary also counts how many distinct optimizer routes each pool uses across the five levels.
-
-### Experiment G
-
-Section 22 asks for sparse, medium, and dense layouts and measures the feasibility rate, total time, and states explored. G needs infeasible instances to have a feasibility rate, so it uses a shorter-range vehicle than B (40 kWh, 80% start, so the trip needs at least two stops) and 100 kW stations. Station counts are 2, 3, 4, 5, 6, 8, 10, 15, 25, and 50 over 20 pools, each a prefix of its pool. The `tier` in the note groups them as sparse (up to 4), medium (5 to 10), and dense (above 10). These tiers differ from B's layouts because B needs most instances feasible. `states_expanded` of the optimizer is the states-explored metric. `feasibility_vs_charger_density.png` plots the feasible share per station count for both algorithms; the FRC curve is drawn 4% to the right so it does not hide behind the optimizer's.
-
-### Experiment H
-
-Section 22 compares identical charger speeds with a mixed slow/fast network. H keeps one layout and one set of roads per pool and changes only the rates: all 50, all 100, half 50 and half 150 (mean 100), and all 150 kW, 10 pools, 25 stations, a 60 kWh battery at 60%. `uniform_100` is the mean-matched reference for the mixed network. `fast_stop_share` in the summary is the share of charge stops at a station of 150 kW or more.
+## What does not run
 
 ### Experiment I
 
 Experiment I runs the optimizer and the baseline on every folder of the H5 scenarios under `data/processed/` (`canonical_graph.json` and `trip_config.json`, plus the optional `scenario_meta.json` for the note). A row pair has `route=`, `stops_at=`, and `soc_profile_kwh=`. `data/processed/` is gitignored. When the directory is missing or holds no scenario, `real_routes.csv` is a single `UNAVAILABLE` row. A folder that does not load becomes an `UNAVAILABLE` row that names the error, and the other folders still run. The S9 runner `python -m experiments.real_data` (on `origin/main`, not on this branch) writes `results/real/` with all four algorithms and an independent plan check. It is a separate output, and `real_routes.csv` here is the Section 23 file. Run both when the branches meet. Neither replaces the other.
+- `greedy_comparison.csv` — FRC baseline, H4. No `greedy_vs_optimizer.png`.
+- `initial_soc.csv`, `charger_density.csv`, `charger_speed.csv` — Experiments F, G, and H (H9). No `feasibility_vs_charger_density.png`.
+- `real_routes.csv` in `results/` — `run_all` still writes the placeholder. Real rows come from `python -m experiments.real_data` (see S9 above) into `results/real/real_routes.csv`.
 
 ### Measurements
 
@@ -465,13 +439,6 @@ Default run, seed 505, 3 repeats. `--no-sweeps` skips B, F, G, and H. Experiment
 
 ## What does not run
 
-These files stay a single `UNAVAILABLE` row. The default run does not replace them with measurements, and it does not replace C, D, or E with that placeholder:
-
-- `greedy_comparison.csv` — FRC baseline, H4. No `greedy_vs_optimizer.png`.
-- `initial_soc.csv`, `charger_density.csv`, `charger_speed.csv` — Experiments F, G, and H (H9). No `feasibility_vs_charger_density.png`.
-- `real_routes.csv` in `results/` — `run_all` still writes the placeholder. Real rows come from `python -m experiments.real_data` (see S9 above) into `results/real/real_routes.csv`.
-
-`greedy_baseline.solve` is not called.
 With `--no-sweeps`, B, C, D, E, F, G, H, and J stay a single `UNAVAILABLE` row each. Experiment I writes `real_routes.csv` from the scenarios under `--scenarios` (default `data/processed`) and leaves a single `UNAVAILABLE` row when there are none. `run()` called without `scenarios` also leaves it `UNAVAILABLE`, so tests do not depend on a gitignored directory.
 
 ## Plots
