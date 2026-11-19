@@ -18,7 +18,7 @@ One run:
 5. runs ``experiments.real_data`` on both versions (label-setting, A*, greedy, with the
    independent plan checker) and reports whether the plan, the stops, or the times change.
 
-It writes, under ``--out`` (default ``results/h12_osm``)::
+It writes, under ``<--out>/<scenario id>`` (``--out`` defaults to ``results/h12_osm``)::
 
     osm_validation.json  osm_validation.md  edge_comparison.csv  osm_drive_graph.graphml
     route_cache/                         road_metrics cache for both backends
@@ -27,8 +27,9 @@ It writes, under ``--out`` (default ``results/h12_osm``)::
 
 The visualizer reads the OSM version with::
 
-    python -m visualizer.app --scenarios results/h12_osm/scenarios_osmnx \\
-        --results results/h12_osm/results_osmnx
+    python -m visualizer.app \\
+        --scenarios results/h12_osm/<id>/scenarios_osmnx \\
+        --results results/h12_osm/<id>/results_osmnx
 
 Run it with::
 
@@ -40,13 +41,16 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import statistics
 import sys
 import time
+import xml.etree.ElementTree as ET
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from xml.sax.saxutils import quoteattr
 
 from data_pipeline.chargers import load_stations
 from data_pipeline.road_graph import (
@@ -70,10 +74,12 @@ DEFAULT_OUT = ROOT / "results" / "h12_osm"
 DEFAULT_SCENARIO = "no_charge_detroit_ann_arbor"
 DEFAULT_PAD_DEG = 0.1
 DEFAULT_RETRIES = 5
+DEFAULT_MAX_SNAP_MILES = 3.0
 DEFAULT_WAIT_SECONDS = 30.0
 MAX_WAIT_SECONDS = 300.0
 PLAN_ALGORITHMS = ("label_setting", "greedy")
 GRAPHML_NAME = "osm_drive_graph.graphml"
+FILTERED_XML_NAME = "osm_drive_filtered.osm"
 REPORT_JSON = "osm_validation.json"
 REPORT_MD = "osm_validation.md"
 EDGE_CSV = "edge_comparison.csv"
@@ -100,12 +106,29 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--scenario", default=DEFAULT_SCENARIO, help="H5 scenario id")
     parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT, help="AFDC snapshot")
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="output directory")
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=DEFAULT_OUT,
+        help="output root; each scenario writes to <out>/<scenario id>",
+    )
     parser.add_argument(
         "--graphml",
         type=Path,
         default=None,
         help="use this OSM drive graph (GraphML) instead of downloading one",
+    )
+    parser.add_argument(
+        "--osm-xml",
+        type=Path,
+        default=None,
+        help="build the drive graph from this OSM XML extract (any size) instead of downloading",
+    )
+    parser.add_argument(
+        "--max-snap-miles",
+        type=float,
+        default=DEFAULT_MAX_SNAP_MILES,
+        help="fail if a scenario node is farther than this from the nearest OSM graph node",
     )
     parser.add_argument(
         "--pad", type=float, default=DEFAULT_PAD_DEG, help="degrees of padding around the nodes"
@@ -131,8 +154,10 @@ def main(argv: list[str] | None = None) -> int:
         summary = run_validation(
             args.scenario,
             args.snapshot,
-            args.out,
+            args.out / args.scenario,
             graphml=args.graphml,
+            osm_xml=args.osm_xml,
+            max_snap_miles=args.max_snap_miles,
             pad_deg=args.pad,
             retries=args.retries,
             wait_seconds=args.wait,
@@ -151,6 +176,8 @@ def run_validation(
     out: str | Path,
     *,
     graphml: str | Path | None = None,
+    osm_xml: str | Path | None = None,
+    max_snap_miles: float = DEFAULT_MAX_SNAP_MILES,
     osm_graph: Any = None,
     pad_deg: float = DEFAULT_PAD_DEG,
     retries: int = DEFAULT_RETRIES,
@@ -186,12 +213,15 @@ def run_validation(
             nodes,
             out_dir / GRAPHML_NAME,
             graphml=graphml,
+            osm_xml=osm_xml,
+            filtered_xml_path=out_dir / FILTERED_XML_NAME,
             pad_deg=pad_deg,
             retries=retries,
             wait_seconds=wait_seconds,
             refresh=refresh,
             sleep=sleep,
         )
+    snap = check_snap_distances(ox, osm_graph, nodes, max_snap_miles)
     prewarm_osm_cache(ox, osm_graph, nodes, cache_dir)
 
     routed = build_scenario(
@@ -222,7 +252,7 @@ def run_validation(
         "generated_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "afdc_snapshot": baseline["afdc_snapshot"],
         "osmnx_version": getattr(ox, "__version__", "unknown"),
-        "osm_graph": {"source": source, **graph_size(osm_graph)},
+        "osm_graph": {"source": source, **graph_size(osm_graph), **snap},
         "nodes": len(nodes),
         "edges": {k: v for k, v in edges.items() if k != "rows"},
         "plans": plan_comparison(plans),
@@ -248,6 +278,8 @@ def obtain_drive_graph(
     graphml_path: Path,
     *,
     graphml: str | Path | None,
+    osm_xml: str | Path | None = None,
+    filtered_xml_path: Path | None = None,
     pad_deg: float,
     retries: int,
     wait_seconds: float,
@@ -262,11 +294,129 @@ def obtain_drive_graph(
         return annotate_osm_graph(ox, ox.load_graphml(path)), f"file {path}"
     if graphml_path.is_file() and not refresh:
         return annotate_osm_graph(ox, ox.load_graphml(graphml_path)), f"saved {graphml_path.name}"
+    if osm_xml is not None:
+        source_path = Path(osm_xml)
+        if not source_path.is_file():
+            raise ValidationError(f"--osm-xml file not found: {source_path}")
+        filtered = filtered_xml_path or graphml_path.with_name(FILTERED_XML_NAME)
+        counts = filter_osm_xml_for_driving(source_path, filtered)
+        if not counts["ways"]:
+            raise ValidationError(f"no drivable ways found in {source_path}")
+        graph = ox.graph_from_xml(filtered, simplify=True)
+        ox.save_graphml(graph, graphml_path)
+        return annotate_osm_graph(ox, graph), f"OSM XML {source_path.name}"
     graph = download_drive_graph(
         ox, nodes, pad_deg=pad_deg, retries=retries, wait_seconds=wait_seconds, sleep=sleep
     )
     ox.save_graphml(graph, graphml_path)
     return annotate_osm_graph(ox, graph), "Overpass download"
+
+
+# OSMnx's "drive" network filter (osmnx.settings.default_access plus the drive query), as
+# patterns searched anywhere in the tag value like Overpass's !~ operator. A missing tag
+# passes. Keep in step with osmnx._overpass._get_network_filter("drive").
+DRIVE_EXCLUDED_HIGHWAY = re.compile(
+    "abandoned|bridleway|bus_guideway|construction|corridor|cycleway|elevator|escalator|"
+    "footway|no|path|pedestrian|planned|platform|proposed|raceway|razed|rest_area|service|"
+    "services|steps|track"
+)
+DRIVE_EXCLUDED_SERVICE = re.compile("alley|driveway|emergency_access|parking|parking_aisle|private")
+DRIVE_TAG_EXCLUSIONS = {
+    "area": re.compile("yes"),
+    "access": re.compile("private"),
+    "motor_vehicle": re.compile("no"),
+    "motorcar": re.compile("no"),
+    "service": DRIVE_EXCLUDED_SERVICE,
+}
+
+
+def is_drivable_way(tags: dict[str, str]) -> bool:
+    """True when OSMnx's ``network_type="drive"`` filter would keep a way with these tags."""
+    highway = tags.get("highway")
+    if highway is None or DRIVE_EXCLUDED_HIGHWAY.search(highway):
+        return False
+    return not any(
+        key in tags and pattern.search(tags[key]) for key, pattern in DRIVE_TAG_EXCLUSIONS.items()
+    )
+
+
+def stream_osm_elements(path: Path):
+    """Yield each top-level node, way, and relation, then free it so memory stays flat."""
+    context = ET.iterparse(path, events=("start", "end"))
+    _event, root = next(context)
+    for event, element in context:
+        if event == "end" and element.tag in ("node", "way", "relation"):
+            yield element
+            root.clear()
+
+
+def filter_osm_xml_for_driving(source: Path, destination: Path) -> dict[str, int]:
+    """Stream a large OSM XML extract into a small file holding only the drive network.
+
+    ``ox.graph_from_xml`` keeps every element of a file in memory, which a multi-gigabyte
+    state extract cannot afford. Pass 1 reads the ways and keeps the drivable ones. Pass 2
+    reads the nodes (they come before the ways in an OSM file) and keeps those the kept
+    ways use. Nothing but the files' elements is held in memory beyond the kept node ids.
+    """
+    ways: list[tuple[str, list[str], dict[str, str]]] = []
+    needed: set[str] = set()
+    for element in stream_osm_elements(source):
+        if element.tag == "way":
+            tags = {t.get("k"): t.get("v") for t in element.findall("tag")}
+            if is_drivable_way(tags):
+                refs = [nd.get("ref") for nd in element.findall("nd")]
+                ways.append((element.get("id"), refs, tags))
+                needed.update(refs)
+
+    node_count = 0
+    with destination.open("w", encoding="utf-8") as out:
+        out.write("<?xml version='1.0' encoding='UTF-8'?>\n<osm version=\"0.6\">\n")
+        for element in stream_osm_elements(source):
+            if element.tag == "node":
+                if element.get("id") in needed:
+                    out.write(
+                        f"<node id={quoteattr(element.get('id'))} "
+                        f"lat={quoteattr(element.get('lat'))} "
+                        f"lon={quoteattr(element.get('lon'))}/>\n"
+                    )
+                    node_count += 1
+            elif element.tag == "way":
+                break
+        for way_id, refs, tags in ways:
+            out.write(f"<way id={quoteattr(way_id)}>\n")
+            for ref in refs:
+                out.write(f"<nd ref={quoteattr(ref)}/>\n")
+            for key, value in tags.items():
+                out.write(f"<tag k={quoteattr(key)} v={quoteattr(value)}/>\n")
+            out.write("</way>\n")
+        out.write("</osm>\n")
+    return {"ways": len(ways), "nodes": node_count}
+
+
+def check_snap_distances(
+    ox: Any, graph: Any, nodes: list[dict], max_miles: float
+) -> dict[str, float]:
+    """Fail when a scenario node is far from every OSM graph node (the extract is too small).
+
+    A node outside the extract would snap to its edge and every route to it would be wrong.
+    """
+    lons = [float(node["lon"]) for node in nodes]
+    lats = [float(node["lat"]) for node in nodes]
+    _ids, meters = ox.distance.nearest_nodes(graph, lons, lats, return_dist=True)
+    miles = [float(m) / 1609.344 for m in meters]
+    far = [
+        f"{node['id']} ({distance:.1f} mi)"
+        for node, distance in zip(nodes, miles, strict=True)
+        if distance > max_miles
+    ]
+    if far:
+        raise ValidationError(
+            f"{len(far)} scenario node(s) are more than {max_miles:g} mi from the nearest OSM "
+            f"graph node: {', '.join(far)}. The OSM data does not cover them. Use an extract "
+            "or download that covers every scenario node (see the bounding box in the "
+            "README), or raise --max-snap-miles if the gap is real."
+        )
+    return {"max_snap_miles": max(miles)}
 
 
 def download_drive_graph(

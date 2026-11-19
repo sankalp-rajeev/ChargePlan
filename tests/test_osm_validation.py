@@ -19,9 +19,12 @@ from data_pipeline.road_graph import (
 from experiments import osm_validation
 from experiments.osm_validation import (
     ValidationError,
+    check_snap_distances,
     compare_edges,
     download_drive_graph,
+    filter_osm_xml_for_driving,
     format_report,
+    is_drivable_way,
     plan_comparison,
     plan_summary,
     ratio_stats,
@@ -333,3 +336,107 @@ def test_report_text_states_ratios_and_plan_changes(snapshot: Path, tmp_path: Pa
     assert "| distance |" in text and "| drive time |" in text
     assert "label_setting: " in text and "greedy: " in text
     assert (tmp_path / "out" / "osm_validation.md").read_text(encoding="utf-8").strip() == text
+
+
+def test_main_writes_each_scenario_to_its_own_folder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    seen: dict = {}
+
+    def fake_run_validation(scenario_id, snapshot, out, **kwargs):
+        seen.update(scenario_id=scenario_id, out=out)
+        raise ValidationError("stop here")
+
+    monkeypatch.setattr(osm_validation, "run_validation", fake_run_validation)
+    code = osm_validation.main(["--scenario", "one_stop_detroit_cleveland", "--out", str(tmp_path)])
+    assert code == 1
+    assert seen["out"] == tmp_path / "one_stop_detroit_cleveland"
+    assert "stop here" in capsys.readouterr().err
+
+
+OSM_XML = """<?xml version='1.0' encoding='UTF-8'?>
+<osm version="0.6">
+  <bounds minlat="42.0" minlon="-84.0" maxlat="42.5" maxlon="-83.0"/>
+  <node id="1" lat="42.30" lon="-83.50"><tag k="highway" v="traffic_signals"/></node>
+  <node id="2" lat="42.30" lon="-83.45"/>
+  <node id="3" lat="42.30" lon="-83.40"/>
+  <node id="4" lat="42.35" lon="-83.45"/>
+  <node id="5" lat="42.40" lon="-83.45"/>
+  <node id="6" lat="42.45" lon="-83.45"/>
+  <way id="10"><nd ref="1"/><nd ref="2"/><nd ref="3"/>
+    <tag k="highway" v="motorway"/><tag k="maxspeed" v="65 mph"/></way>
+  <way id="11"><nd ref="2"/><nd ref="4"/><tag k="highway" v="residential"/></way>
+  <way id="12"><nd ref="4"/><nd ref="5"/><tag k="highway" v="footway"/></way>
+  <way id="13"><nd ref="5"/><nd ref="6"/><tag k="highway" v="service"/></way>
+  <way id="14"><nd ref="3"/><nd ref="5"/>
+    <tag k="highway" v="primary"/><tag k="access" v="private"/></way>
+  <relation id="20"><member type="way" ref="10" role="outer"/></relation>
+</osm>
+"""
+
+
+def test_drive_filter_matches_the_osmnx_drive_rules() -> None:
+    assert is_drivable_way({"highway": "motorway"})
+    assert is_drivable_way({"highway": "residential", "oneway": "yes"})
+    assert not is_drivable_way({"highway": "footway"})
+    assert not is_drivable_way({"highway": "service"})
+    assert not is_drivable_way({"highway": "primary", "access": "private"})
+    assert not is_drivable_way({"highway": "primary", "motor_vehicle": "no"})
+    assert not is_drivable_way({"highway": "primary", "area": "yes"})
+    assert not is_drivable_way({"building": "yes"})
+
+
+def test_filter_keeps_only_drivable_ways_and_their_nodes(tmp_path: Path) -> None:
+    source = tmp_path / "area.osm"
+    source.write_text(OSM_XML, encoding="utf-8")
+    destination = tmp_path / "drive.osm"
+    counts = filter_osm_xml_for_driving(source, destination)
+    assert counts == {"ways": 2, "nodes": 4}
+    text = destination.read_text(encoding="utf-8")
+    assert 'way id="10"' in text and 'way id="11"' in text
+    for dropped in ('way id="12"', 'way id="13"', 'way id="14"', "relation"):
+        assert dropped not in text
+    assert 'node id="6"' not in text and 'node id="5"' not in text
+    graph = ox.graph_from_xml(destination, simplify=False)
+    assert graph.number_of_nodes() == 4
+
+
+def test_check_snap_distances_flags_nodes_outside_the_extract() -> None:
+    graph = grid_graph()
+    inside = [{"id": "a", "lat": 42.3, "lon": -83.5}]
+    assert check_snap_distances(ox, graph, inside, 3.0)["max_snap_miles"] < 3.0
+    outside = inside + [{"id": "far", "lat": 42.3, "lon": -81.5}]
+    with pytest.raises(ValidationError, match="far") as info:
+        check_snap_distances(ox, graph, outside, 3.0)
+    assert "does not cover" in str(info.value)
+
+
+def test_run_validation_fails_when_a_node_is_outside_the_osm_data(
+    snapshot: Path, tmp_path: Path
+) -> None:
+    with pytest.raises(ValidationError, match="does not cover"):
+        run_validation(
+            SCENARIO, snapshot, tmp_path / "out", osm_graph=grid_graph(), max_snap_miles=0.01
+        )
+
+
+def test_run_validation_from_an_osm_xml_extract(
+    snapshot: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "area.osm"
+    source.write_text(OSM_XML, encoding="utf-8")
+    seen: dict = {}
+
+    def fake_check(ox_module, graph, nodes, max_miles):
+        seen["graph_nodes"] = graph.number_of_nodes()
+        raise ValidationError("stop after loading")
+
+    monkeypatch.setattr(osm_validation, "check_snap_distances", fake_check)
+    out = tmp_path / "out"
+    with pytest.raises(ValidationError, match="stop after loading"):
+        run_validation(SCENARIO, snapshot, out, osm_xml=source)
+    assert seen["graph_nodes"] > 0
+    assert (out / "osm_drive_graph.graphml").is_file()
+    assert (out / "osm_drive_filtered.osm").is_file()
+    with pytest.raises(ValidationError, match="--osm-xml file not found"):
+        run_validation(SCENARIO, snapshot, tmp_path / "other", osm_xml=tmp_path / "none.osm")

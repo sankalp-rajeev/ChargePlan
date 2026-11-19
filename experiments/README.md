@@ -407,18 +407,22 @@ H5's default backend is `haversine`. Its road distances are straight-line distan
 
 ### Haversine against OSMnx (H12)
 
-`experiments/osm_validation.py` measures how far the haversine estimate is from OSMnx shortest-time routes on one scenario, and whether the optimizer's answer changes:
+`experiments/osm_validation.py` measures how far the haversine estimate is from OSMnx shortest-time routes on one scenario at a time, and whether the optimizer's answer changes. Two scenarios have been run (results below):
 
 ```text
 python -m experiments.osm_validation --scenario no_charge_detroit_ann_arbor
-python -m experiments.osm_validation --scenario one_stop_detroit_cleveland --graphml my_area.graphml
+python -m experiments.osm_validation --scenario one_stop_detroit_cleveland --osm-xml detroit_cleveland.osm
 ```
 
 It builds the scenario with the H5 pipeline once with `--backend haversine` and once with `--backend osmnx`. Calling OSMnx for each of the 73 or more edges would mean one Overpass download per edge, so the module downloads one drive graph that covers every scenario node (padded by `--pad` degrees, 0.1 by default), saves it as `osm_drive_graph.graphml`, routes every ordered node pair on it, and stores the results in the route cache as OSMnx entries. The OSM build then reads those entries and never calls Overpass. If any edge is not an OSMnx edge the run fails. `--graphml` uses a graph you downloaded elsewhere, `--refresh` downloads again, and `--overpass-url` picks another Overpass endpoint. A failed download is retried `--retries` times (5 by default) with a wait that starts at `--wait` seconds, doubles, and stops growing at 300 seconds. If it still fails the run exits 1 and names `--graphml`.
 
+`--osm-xml FILE` reads a local OSM XML extract (for example one exported from BBBike or cut with osmium) instead of calling Overpass. A multi-gigabyte extract is too large for `ox.graph_from_xml` directly, so the module first streams it twice, keeps only the drivable ways OSMnx's "drive" network would keep and the nodes they use, writes that to `osm_drive_filtered.osm`, and builds the graph from it. The order of sources is `--graphml`, then a saved `osm_drive_graph.graphml` (unless `--refresh`), then `--osm-xml`, then an Overpass download. Because a saved GraphML wins, delete it or pass `--refresh` when you switch to a different extract.
+
+Before routing, every scenario node is snapped to the nearest graph node and the run stops with an error if any is farther than `--max-snap-miles` (3 by default). This catches an extract that does not cover the scenario or whose roads are not connected across it: OSMnx keeps only the largest connected network, so a gap in the extract (a first Detroit–Cleveland extract ended at lon -83.499 and cut the Michigan–Ohio roads near Toledo) leaves the far nodes 37 to 59 miles from any road. Cover the scenario's bounding box plus the roads that link its ends; the Detroit–Cleveland extract used below spans lat 41.008 to 42.6 and lon -83.751 to -81.445.
+
 It compares the edges both builds kept. Each kept edge gives a distance ratio and a drive-time ratio (OSMnx divided by haversine), and the report gives the median, the minimum and maximum, and the 10th and 90th percentiles. It then runs `experiments.real_data` on both versions and reports, for label-setting and greedy, whether the status, the route, the stop stations, or the stop count changed.
 
-Output under `results/h12_osm/` (gitignored): `osm_validation.json`, `osm_validation.md` (the tables below), `edge_comparison.csv` (every compared edge), the GraphML, the route cache, the two scenario folders (`scenarios_haversine`, `scenarios_osmnx`), and the S9 result files for both (`results_haversine`, `results_osmnx`). The visualizer shows the OSM version with `python -m visualizer.app --scenarios results/h12_osm/scenarios_osmnx --results results/h12_osm/results_osmnx`; its caption names the backend.
+Output under `results/h12_osm/<scenario id>/` (gitignored; `--out` sets the root, so each scenario keeps its own folder): `osm_validation.json`, `osm_validation.md` (the tables below), `edge_comparison.csv` (every compared edge), the GraphML, the route cache, the two scenario folders (`scenarios_haversine`, `scenarios_osmnx`), and the S9 result files for both (`results_haversine`, `results_osmnx`). The visualizer shows the OSM version with `python -m visualizer.app --scenarios results/h12_osm/<scenario id>/scenarios_osmnx --results results/h12_osm/<scenario id>/results_osmnx`; its caption names the backend.
 
 #### Result: `no_charge_detroit_ann_arbor`
 
@@ -439,6 +443,26 @@ Routed distance is close to the haversine estimate (median 1.7% shorter, range 0
 | greedy | osmnx | FEASIBLE | 39.7 | 0 |
 
 Neither plan, route, nor stop count changes. Only the trip time falls, from 48.8 to 39.7 minutes (about 19%), so the haversine time overstates this trip. This is one short scenario with no charging stop, so it says nothing about whether stop choices change on the longer scenarios (`one_stop`, `multi_stop`, `mixed_speeds`, `sparse`), which still use haversine edges.
+
+#### Result: `one_stop_detroit_cleveland`
+
+Run on 2026-11-19 with the AFDC snapshot of 2026-11-09 and OSMnx 2.1.1, on the local OSM extract `detroit_cleveland.osm` (the 4.9 GB file; filtering and building the graph took about 6 minutes, and the whole run about 20, peaking near 4.9 GB of memory). The drive graph has 228,048 nodes and 613,581 edges, and the farthest scenario node is 0.44 miles from a graph node. The scenario has 22 nodes; both builds kept the same 421 edges, so all 421 were compared.
+
+| OSMnx / haversine | median | min | max | p10 | p90 |
+| --- | --- | --- | --- | --- | --- |
+| distance | 1.278 | 0.800 | 2.930 | 0.927 | 1.542 |
+| drive time | 1.231 | 0.733 | 5.493 | 0.962 | 2.173 |
+
+Here the haversine estimate underestimates the road: routed distance is a median 28% longer and routed drive time a median 23% longer than the 1.25-factor, 55 mph estimate. The 296 edges whose haversine estimate is 10 miles or more have a median distance ratio of 1.37 and a time ratio of 1.17, so the 1.25 factor is too low on the corridor's long legs (the Detroit–Cleveland trip is 115 miles by the estimate and 168 by road). The largest ratios (up to 2.93 distance and 5.49 time) are on short edges: all 9 edges above 2.0 in distance are 1.1 miles or less by the estimate, so a small absolute detour gives a large ratio. I did not look into which roads cause them. The minimum distance ratio of 0.800 is the floor the pipeline applies (a road distance is never below the straight-line distance, which is 0.8 of the 1.25-factor estimate), reached on 2 edges.
+
+| Algorithm | Backend | Status | Time (min) | Distance (mi) | Stops | Stop stations |
+| --- | --- | --- | --- | --- | --- | --- |
+| label_setting | haversine | FEASIBLE | 126.7 | 115.0 | 1 | 351291 |
+| label_setting | osmnx | FEASIBLE | 161.2 | 168.3 | 1 | 445758 |
+| greedy | haversine | FEASIBLE | 126.7 | 115.0 | 1 | 351291 |
+| greedy | osmnx | FEASIBLE | 182.7 | 179.1 | 1 | 351291 |
+
+With real roads the optimizer's route and charging station change: label-setting stops at 445758 instead of 351291, the stop count stays at 1, and the trip takes 161.2 minutes instead of 126.7 (27% longer). Greedy keeps station 351291 and the same route, but its trip grows from 126.7 to 182.7 minutes. On the OSM roads the optimizer's plan is 21.5 minutes (12%) faster than greedy, while the haversine estimate showed no difference between them. So the haversine scenarios understate trip time on this corridor, and for this scenario they also pick a different charging stop than the OSM graph does. One scenario each is still not a general claim.
 
 `tests/test_osm_validation.py` runs the whole comparison offline on a synthetic street grid, so the tests do not need Overpass.
 
