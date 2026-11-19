@@ -221,7 +221,17 @@ def test_provenance_names_the_road_backend_and_snapshot(tmp_path: Path) -> None:
     [entry] = discover_scenarios(tmp_path, tmp_path / "r")
     lines = provenance_lines(entry)
     assert "AFDC snapshot 2026-11-09" in lines
-    assert any("haversine" in line and "not OSM" in line for line in lines)
+    assert "road backend: haversine (estimated road distances, not OSM routes)" in lines
+
+
+def test_provenance_names_osmnx_routes(tmp_path: Path) -> None:
+    folder = tmp_path / "s"
+    folder.mkdir()
+    (folder / "scenario_meta.json").write_text(
+        json.dumps({"road_backend": "osmnx"}), encoding="utf-8"
+    )
+    [entry] = discover_scenarios(tmp_path, tmp_path / "r")
+    assert "road backend: osmnx (OSM shortest-time routes)" in provenance_lines(entry)
 
 
 def test_corrupt_result_file_shows_as_unreadable_in_the_overview(

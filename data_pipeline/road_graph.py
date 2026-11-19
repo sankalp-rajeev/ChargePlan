@@ -173,8 +173,35 @@ def osmnx_metrics(
         }
 
     graph = _osm_drive_graph(ox, origin_lat, origin_lon, dest_lat, dest_lon)
+    graph = annotate_osm_graph(ox, graph)
+    return route_on_osm_graph(ox, graph, origin_lat, origin_lon, dest_lat, dest_lon)
+
+
+def annotate_osm_graph(ox: Any, graph: Any):
+    """Add the edge speeds and travel times that ``route_on_osm_graph`` weighs by."""
     graph = ox.add_edge_speeds(graph)
-    graph = ox.add_edge_travel_times(graph)
+    return ox.add_edge_travel_times(graph)
+
+
+def route_on_osm_graph(
+    ox: Any,
+    graph: Any,
+    origin_lat: float,
+    origin_lon: float,
+    dest_lat: float,
+    dest_lon: float,
+) -> dict[str, Any]:
+    """Shortest-time route between two points on an already downloaded, annotated graph.
+
+    One drive graph can serve many origin-destination pairs, so a scenario needs a
+    single Overpass download instead of one per pair.
+    """
+    if math.isclose(origin_lat, dest_lat) and math.isclose(origin_lon, dest_lon):
+        return {
+            "distance_miles": 0.0,
+            "drive_time_minutes": 0.0,
+            "backend": "osmnx",
+        }
 
     origin_node = ox.nearest_nodes(graph, origin_lon, origin_lat)
     dest_node = ox.nearest_nodes(graph, dest_lon, dest_lat)

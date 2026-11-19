@@ -405,6 +405,43 @@ The manifest also records whether A* expanded no more states than label-setting.
 
 H5's default backend is `haversine`. Its road distances are straight-line distance times 1.25 at 55 mph, an estimate and not a routed distance. Treat every real-data time and distance as that estimate unless `scenario_meta.json` says another `road_backend`. The runner does not change the backend and records it only when the meta file names it.
 
+### Haversine against OSMnx (H12)
+
+`experiments/osm_validation.py` measures how far the haversine estimate is from OSMnx shortest-time routes on one scenario, and whether the optimizer's answer changes:
+
+```text
+python -m experiments.osm_validation --scenario no_charge_detroit_ann_arbor
+python -m experiments.osm_validation --scenario one_stop_detroit_cleveland --graphml my_area.graphml
+```
+
+It builds the scenario with the H5 pipeline once with `--backend haversine` and once with `--backend osmnx`. Calling OSMnx for each of the 73 or more edges would mean one Overpass download per edge, so the module downloads one drive graph that covers every scenario node (padded by `--pad` degrees, 0.1 by default), saves it as `osm_drive_graph.graphml`, routes every ordered node pair on it, and stores the results in the route cache as OSMnx entries. The OSM build then reads those entries and never calls Overpass. If any edge is not an OSMnx edge the run fails. `--graphml` uses a graph you downloaded elsewhere, `--refresh` downloads again, and `--overpass-url` picks another Overpass endpoint. A failed download is retried `--retries` times (5 by default) with a wait that starts at `--wait` seconds, doubles, and stops growing at 300 seconds. If it still fails the run exits 1 and names `--graphml`.
+
+It compares the edges both builds kept. Each kept edge gives a distance ratio and a drive-time ratio (OSMnx divided by haversine), and the report gives the median, the minimum and maximum, and the 10th and 90th percentiles. It then runs `experiments.real_data` on both versions and reports, for label-setting and greedy, whether the status, the route, the stop stations, or the stop count changed.
+
+Output under `results/h12_osm/` (gitignored): `osm_validation.json`, `osm_validation.md` (the tables below), `edge_comparison.csv` (every compared edge), the GraphML, the route cache, the two scenario folders (`scenarios_haversine`, `scenarios_osmnx`), and the S9 result files for both (`results_haversine`, `results_osmnx`). The visualizer shows the OSM version with `python -m visualizer.app --scenarios results/h12_osm/scenarios_osmnx --results results/h12_osm/results_osmnx`; its caption names the backend.
+
+#### Result: `no_charge_detroit_ann_arbor`
+
+Run on 2026-11-19 with the AFDC snapshot of 2026-11-09 and OSMnx 2.1.1. The OSM drive graph (one Overpass download, 151,156 nodes and 399,186 edges) covers the 10 scenario nodes. Both builds kept the same 73 edges, so all 73 were compared.
+
+| OSMnx / haversine | median | min | max | p10 | p90 |
+| --- | --- | --- | --- | --- | --- |
+| distance | 0.983 | 0.839 | 1.297 | 0.925 | 1.154 |
+| drive time | 0.872 | 0.674 | 1.871 | 0.810 | 1.116 |
+
+Routed distance is close to the haversine estimate (median 1.7% shorter, range 0.84 to 1.30 times). The haversine factor of 1.25 slightly overestimates road distance on this corridor, and routed drive time is a median 13% shorter than the 55 mph estimate because most of the route is highway. Both plans cost the same number of stops and take the same route:
+
+| Algorithm | Backend | Status | Time (min) | Stops |
+| --- | --- | --- | --- | --- |
+| label_setting | haversine | FEASIBLE | 48.8 | 0 |
+| label_setting | osmnx | FEASIBLE | 39.7 | 0 |
+| greedy | haversine | FEASIBLE | 48.8 | 0 |
+| greedy | osmnx | FEASIBLE | 39.7 | 0 |
+
+Neither plan, route, nor stop count changes. Only the trip time falls, from 48.8 to 39.7 minutes (about 19%), so the haversine time overstates this trip. This is one short scenario with no charging stop, so it says nothing about whether stop choices change on the longer scenarios (`one_stop`, `multi_stop`, `mixed_speeds`, `sparse`), which still use haversine edges.
+
+`tests/test_osm_validation.py` runs the whole comparison offline on a synthetic street grid, so the tests do not need Overpass.
+
 ### Speed
 
 The solvers compute each edge's discretized energy and integer drive time once, before the search, instead of on every relaxation. Labels, status, `states_expanded`, and `peak_states_stored` are unchanged; `tests/test_precompute_equivalence.py` compares them with outputs recorded from the earlier code on the sample and 50 seeded graphs. On the 50-charger Experiment D instance (1,700 edges) a label-setting solve fell from about 0.28 s to 0.04 s.
