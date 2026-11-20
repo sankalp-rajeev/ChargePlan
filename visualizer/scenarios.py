@@ -163,7 +163,9 @@ def provenance_lines(entry: ScenarioEntry) -> list[str]:
         lines.append(f"AFDC snapshot {meta['afdc_snapshot_date']}")
     backend = meta.get("road_backend")
     if backend == "haversine":
-        lines.append("road backend: haversine (straight-line distances, not OSM roads)")
+        lines.append("road backend: haversine (estimated road distances, not OSM routes)")
+    elif backend == "osmnx":
+        lines.append("road backend: osmnx (OSM shortest-time routes)")
     elif backend:
         lines.append(f"road backend: {backend}")
     if meta.get("charger_count") is not None:
