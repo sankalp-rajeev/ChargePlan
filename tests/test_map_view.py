@@ -297,3 +297,31 @@ def test_app_shows_an_error_for_a_missing_file():
 
     assert not app.exception
     assert any("cannot read" in e.value for e in app.error)
+
+
+def test_road_lines_fall_back_to_straight_segments_when_offline(monkeypatch, tmp_path):
+    import urllib.error
+
+    import visualizer.map_view as map_view
+
+    def offline(*_args, **_kwargs):
+        raise urllib.error.URLError("offline")
+
+    monkeypatch.setattr(map_view.urllib.request, "urlopen", offline)
+    monkeypatch.setattr(map_view, "ROAD_CACHE_DIR", tmp_path)
+    start, end = {"lat": 42.33, "lon": -83.05}, {"lat": 41.88, "lon": -87.63}
+    assert map_view.road_geometry(start, end, cache_dir=tmp_path) is None
+    assert render_map(_graph(), _result(), road_lines=True) is not None
+
+
+def test_road_geometry_reads_cached_points(tmp_path):
+    import hashlib
+    import json
+
+    import visualizer.map_view as map_view
+
+    start, end = {"lat": 42.0, "lon": -83.0}, {"lat": 41.5, "lon": -84.0}
+    key = f"{start['lat']:.5f},{start['lon']:.5f}->{end['lat']:.5f},{end['lon']:.5f}"
+    cached = [[42.0, -83.0], [41.8, -83.6], [41.5, -84.0]]
+    (tmp_path / (hashlib.sha1(key.encode()).hexdigest() + ".json")).write_text(json.dumps(cached))
+    assert map_view.road_geometry(start, end, cache_dir=tmp_path) == [tuple(p) for p in cached]

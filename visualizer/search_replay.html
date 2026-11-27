@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="__LEAFLET_CSS__">
+<script src="__LEAFLET_JS__"></script>
+<style>
+  :root {
+    --bg:#11161F; --panel:#171E2A; --panel2:#1E2735; --line:#2A3445; --ink:#E6EBF2; --muted:#8C99AD;
+    --green:#3DDC97; --green-dim:#1F7A5A; --red:#FF4D4D; --maize:#FFCD09; --blue:#5AA9FF;
+  }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; display:flex; flex-direction:column; background:var(--bg); color:var(--ink);
+         font-family:"Segoe UI", Arial, sans-serif; font-size:13px; }
+  .bar { display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .bar h3 { margin:0 10px 0 0; font-size:15px; font-weight:600; }
+  button, select { font:inherit; padding:6px 12px; border-radius:6px; border:1px solid var(--line);
+                   background:var(--panel2); color:var(--ink); cursor:pointer; }
+  button:hover { border-color:#3B475B; }
+  button.primary { background:var(--green); border-color:var(--green); color:#0B1F16; font-weight:600; min-width:80px; }
+  .stats { margin-left:auto; display:flex; gap:16px; color:var(--muted); }
+  .stats b { color:var(--ink); font-variant-numeric:tabular-nums; }
+  .main { flex:1; min-height:0; display:grid; grid-template-columns: 1.25fr 1fr; }
+  .mapwrap { position:relative; min-height:0; border-right:1px solid var(--line); }
+  #map { position:absolute; inset:0; background:#0B0F15; }
+  .leaflet-container { background:#0B0F15; }
+  .banner { position:absolute; left:12px; right:12px; bottom:12px; z-index:1000; display:none;
+            background:rgba(17,22,31,.92); border:1px solid var(--line); border-radius:8px; padding:10px 14px; font-size:14px; }
+  .banner .opt { color:var(--red); font-weight:700; } .banner .gr { color:#B9C2D0; }
+  .side { display:flex; flex-direction:column; min-height:0; }
+  .now { padding:12px 14px; border-bottom:1px solid var(--line); background:var(--panel); min-height:118px; }
+  .now .k { color:var(--muted); font-size:11px; letter-spacing:.06em; text-transform:uppercase; margin-bottom:6px; }
+  .now .t { font-size:14px; line-height:1.45; }
+  .now .t b { color:var(--green); } .now .t .hl { color:var(--maize); font-weight:600; }
+  .code { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+  .code span { font-family:Consolas, "Courier New", monospace; font-size:11.5px; padding:3px 7px; border-radius:4px;
+               background:var(--panel2); color:var(--muted); border:1px solid var(--line); }
+  .code span.on { color:#0B1F16; background:var(--green); border-color:var(--green); }
+  .gridbox { flex:1; min-height:0; display:flex; flex-direction:column; padding:8px 12px 4px; }
+  .gridbox .cap { color:var(--muted); font-size:11.5px; margin-bottom:4px; }
+  #grid { flex:1; width:100%; min-height:0; }
+  .log { height:118px; overflow:auto; border-top:1px solid var(--line); padding:6px 14px; background:var(--panel); }
+  .log .k { color:var(--muted); font-size:11px; letter-spacing:.06em; text-transform:uppercase; margin-bottom:4px; }
+  .log div.e { padding:2px 0; color:#C7D0DC; } .log div.e span { color:var(--muted); display:inline-block; width:74px; font-variant-numeric:tabular-nums; }
+  .log div.e.goal { color:var(--red); font-weight:600; }
+  .foot { padding:6px 14px; color:var(--muted); font-size:11.5px; border-top:1px solid var(--line); display:flex; gap:16px; flex-wrap:wrap; }
+  /* map-only layout: the panel floats over the right side of a full-width map */
+  body.maponly .main { grid-template-columns: 1fr; position:relative; }
+  body.maponly .mapwrap { border-right:none; }
+  body.maponly .side { position:absolute; top:10px; right:10px; bottom:10px; width:370px; z-index:1000;
+    background:rgba(17,22,31,.90); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  body.maponly .side .now, body.maponly .side .log { background:transparent; }
+  body.maponly.nopanel .side { display:none; }
+  body.maponly .banner { right:392px; }
+  body.maponly.nopanel .banner { right:12px; }
+  body:not(.maponly) #panelbtn { display:none; }
+  .sw { display:inline-block; width:14px; height:4px; border-radius:2px; margin-right:5px; vertical-align:2px; }
+  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px; vertical-align:-1px; }
+</style></head>
+<body class="__LAYOUT__">
+<div class="bar">
+  <h3 id="title">How the optimizer searches</h3>
+  <button class="primary" id="play">Play</button>
+  <button id="step">Step</button>
+  <button id="restart">Restart</button>
+  <button id="end">Skip to end</button>
+  <label style="display:flex;align-items:center;gap:5px;color:var(--muted)"><input type="checkbox" id="follow" checked> Follow the search</label>
+  <select id="basemap" title="Basemap"><option value="street">Street map</option><option value="dark">Dark map</option></select>
+  <button id="panelbtn">Hide panel</button>
+  <select id="speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="4">4×</option></select>
+  <div class="stats">
+    <span>Settled <b id="sN">0</b> / <b id="sT">0</b></span>
+    <span>Discovered <b id="sD">1</b></span>
+    <span>In queue <b id="sQ">1</b></span>
+  </div>
+</div>
+<div class="main">
+  <div class="mapwrap"><div id="map"></div><div class="banner" id="banner"></div></div>
+  <div class="side">
+    <div class="now">
+      <div class="k" id="nowk">What the algorithm is doing</div>
+      <div class="t" id="nowt">Press <b>Play</b> or <b>Step</b>. The search front starts at the origin and spreads along every road at driving speed, cheapest plans first.</div>
+      <div class="code">
+        <span id="c1">pop cheapest state</span><span id="c2">skip if stale</span><span id="c3">destination? stop</span><span id="c4">relax drives</span><span id="c5">relax +1 kWh charge</span>
+      </div>
+    </div>
+    <div class="gridbox">
+      <div class="cap">State space: one square per (station, battery level). A square fills when that state is settled; brighter = settled later (higher trip time).</div>
+      <canvas id="grid"></canvas>
+    </div>
+    <div class="log" id="log"><div class="k">Milestones</div></div>
+  </div>
+</div>
+<div class="foot">
+  <span><span class="sw" id="swGrow" style="background:#7CF5C0"></span>roads being explored</span><span><span class="dot" style="background:transparent;border:2px solid #FFCD09"></span>charging</span>
+  <span><span class="sw" id="swRoute" style="background:#FF4D4D"></span>optimal plan</span>
+  <span><span class="sw" id="swGreedy" style="background:#9AA6B8"></span>greedy baseline</span>
+  <span><span class="dot" style="background:#2E7D32"></span>start</span>
+  <span><span class="dot" style="background:#C62828"></span>destination</span>
+  <span id="note"></span>
+</div>
+<script>
+const P = __PAYLOAD__;
+const N = P.steps.length, B = P.capacity_steps, R = P.reserve_steps, C = P.nodes.length, dE = P.soc_step_kwh;
+const END = Math.max(P.final_clock, 0.001);
+const el = (id) => document.getElementById(id);
+el('sT').textContent = N.toLocaleString();
+el('title').textContent = (P.algorithm === 'astar' ? 'A* search' : 'Label-setting search') + ': replay of the real run';
+el('note').textContent = `${N.toLocaleString()} states settled and ${P.links.length} roads explored in the real run (a few ms); replayed on a trip-time clock.`;
+const kwh = (b) => (b * dE).toFixed(dE < 1 ? 1 : 0);
+const name = (n) => n.type === 'origin' ? 'the start' : n.type === 'destination' ? 'the destination' : `charger ${n.code} (${n.kw} kW)`;
+const stops = [[22,84,63],[61,220,151],[255,205,9]];
+function ramp(t) { t = Math.max(0, Math.min(1, t)); const k = t < 0.6 ? 0 : 1, u = t < 0.6 ? t / 0.6 : (t - 0.6) / 0.4;
+  const a = stops[k], b = stops[k + 1];
+  return `rgb(${Math.round(a[0] + (b[0] - a[0]) * u)},${Math.round(a[1] + (b[1] - a[1]) * u)},${Math.round(a[2] + (b[2] - a[2]) * u)})`; }
+
+// ---------- map ----------
+const map = L.map('map', { zoomControl: true, preferCanvas: true });
+const tiles = {
+  dark: L.tileLayer('__TILES__', { maxZoom: 19, subdomains: 'abcd', attribution: '&copy; OpenStreetMap contributors &copy; CARTO' }),
+  street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }),
+};
+const THEMES = {
+  dark: { grow: '#7CF5C0', done: '#3DDC97', glow: '#3DDC97', head: '#E9FFF5', bg: '#0B0F15', route: '#FF4D4D', stop: '#FF4D4D', greedy: '#9AA6B8' },
+  street: { grow: '#00A86B', done: '#16955F', glow: '#00C27A', head: '#0D284B', bg: '#E5E3DF', route: '#1565C0', stop: '#EF6C00', greedy: '#616161' },
+};
+const START_BASEMAP = '__BASEMAP__' in THEMES ? '__BASEMAP__' : 'street';
+let TH = THEMES[START_BASEMAP]; tiles[START_BASEMAP].addTo(map);
+document.getElementById('basemap').value = START_BASEMAP;
+function legendColours() { el('swGrow').style.background = TH.grow; el('swRoute').style.background = TH.route; el('swGreedy').style.background = TH.greedy; }
+legendColours();
+document.querySelector('.leaflet-container').style.background = TH.bg;
+function setBasemap(k) {
+  Object.values(tiles).forEach(t => map.removeLayer(t)); tiles[k].addTo(map); tiles[k].bringToBack(); TH = THEMES[k]; legendColours();
+  if (finalLayer._drawn) { finalLayer._drawn = false; if (finaleAt !== null) { finaleAt = performance.now() - 1600; finale(performance.now()); } }
+  document.querySelector('.leaflet-container').style.background = TH.bg;
+  links.forEach(l => { if (l.state) { l.glow.setStyle({ color: TH.glow }); l.head.setStyle({ fillColor: TH.head, color: TH.head }); } });
+  setClock(T); }
+el('basemap').onchange = (e) => setBasemap(e.target.value);
+el('panelbtn').onclick = () => { document.body.classList.toggle('nopanel'); el('panelbtn').textContent = document.body.classList.contains('nopanel') ? 'Show panel' : 'Hide panel';
+  if (!document.body.classList.contains('nopanel')) { layout(); drawGrid(finaleAt !== null ? 1 : 0); }
+  if (!playing) map.flyToBounds(L.latLngBounds(P.nodes.map(n => [n.lat, n.lon])).pad(0.12), { duration: 0.6, paddingBottomRight: panelPad() }); };
+map.fitBounds(L.latLngBounds(P.nodes.map(n => [n.lat, n.lon])).pad(0.12));
+document.getElementById('follow').addEventListener('change', (e) => { if (!e.target.checked) map.flyToBounds(L.latLngBounds(P.nodes.map(n => [n.lat, n.lon])).pad(0.12), { duration: 0.8 }); });
+const glowLayer = L.layerGroup().addTo(map), lineLayer = L.layerGroup().addTo(map), headLayer = L.layerGroup().addTo(map), finalLayer = L.layerGroup().addTo(map);
+// precompute cumulative lengths so a road can be drawn up to any fraction
+const links = P.links.map(l => {
+  const pts = l.pts, cum = [0];
+  for (let k = 1; k < pts.length; k++) { const dy = pts[k][0] - pts[k - 1][0], dx = (pts[k][1] - pts[k - 1][1]) * 0.74; cum.push(cum[k - 1] + Math.hypot(dx, dy)); }
+  return { ...l, cum, len: cum[cum.length - 1] || 1e-9, glow: null, line: null, head: null, state: 0 };
+});
+function prefix(l, f) {
+  const target = l.len * f, out = [l.pts[0]];
+  for (let k = 1; k < l.pts.length; k++) {
+    if (l.cum[k] <= target) { out.push(l.pts[k]); continue; }
+    const seg = l.cum[k] - l.cum[k - 1] || 1e-9, u = (target - l.cum[k - 1]) / seg;
+    out.push([l.pts[k - 1][0] + (l.pts[k][0] - l.pts[k - 1][0]) * u, l.pts[k - 1][1] + (l.pts[k][1] - l.pts[k - 1][1]) * u]); break;
+  }
+  return out;
+}
+const markers = P.nodes.map((n) => {
+  const base = n.type === 'origin' ? '#2E7D32' : n.type === 'destination' ? '#C62828' : '#4A5568';
+  const m = L.circleMarker([n.lat, n.lon], { radius: n.type === 'charger' ? 5 : 8, color: '#0B0F15', weight: 1.5, fillColor: base, fillOpacity: 1 }).addTo(map);
+  m.bindTooltip(n.type === 'charger' ? `Charger ${n.code}: ${n.kw} kW` : (n.type === 'origin' ? 'Start' : 'Destination'));
+  m._base = base; m.bringToFront(); return m;
+});
+// charging windows per node: from first to last settled charge step (on the clock)
+const chargeWin = P.nodes.map(() => null);
+P.steps.forEach(s => { if (s[2] === 1) { const w = chargeWin[s[0]]; chargeWin[s[0]] = w ? [Math.min(w[0], s[9]), Math.max(w[1], s[9])] : [s[9], s[9]]; } });
+const rings = P.nodes.map((n, c) => chargeWin[c] ? L.circleMarker([n.lat, n.lon], { radius: 13, color: '#FFCD09', weight: 2.5, fill: false, opacity: 0 }).addTo(map) : null);
+
+// ---------- grid ----------
+const cv = el('grid'), g = cv.getContext('2d');
+let W, H, padL = 50, padB = 76, padT = 6, padR = 8, cw, ch;
+const cells = new Map(); let current = null; const maxT = N ? Math.max(...P.steps.map(s => s[3])) : 1;
+function layout() { const r = cv.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  cv.width = Math.max(r.width, 10) * d; cv.height = Math.max(r.height, 10) * d; g.setTransform(d, 0, 0, d, 0, 0);
+  W = Math.max(r.width, 10); H = Math.max(r.height, 10); cw = (W - padL - padR) / C; ch = (H - padT - padB) / (B + 1); }
+const cellXY = (c, b) => [padL + c * cw, padT + (B - b) * ch];
+function drawGrid(pathFrac) {
+  g.clearRect(0, 0, W, H); g.fillStyle = '#141B26'; g.fillRect(padL, padT, W - padL - padR, H - padT - padB);
+  for (const [key, t] of cells) { const [c, b] = key.split(',').map(Number); const [x, y] = cellXY(c, b); g.fillStyle = ramp(t / maxT); g.fillRect(x + 1, y + 0.5, cw - 2, Math.max(ch - 1, 1)); }
+  const ry = padT + (B - R + 1) * ch;
+  g.setLineDash([5, 4]); g.strokeStyle = '#8C99AD'; g.lineWidth = 1; g.beginPath(); g.moveTo(padL, ry); g.lineTo(W - padR, ry); g.stroke(); g.setLineDash([]);
+  g.fillStyle = '#8C99AD'; g.font = '11px Segoe UI, Arial'; g.textAlign = 'left'; g.fillText('reserve', padL + 4, ry + 13); g.textAlign = 'right';
+  [[B, `${kwh(B)} kWh`], [Math.round(B / 2), kwh(Math.round(B / 2))], [0, '0']].forEach(([b, t]) => { const [, y] = cellXY(0, b); g.fillText(t, padL - 6, y + ch / 2 + 4); });
+  g.save(); g.translate(12, padT + (H - padT - padB) / 2); g.rotate(-Math.PI / 2); g.textAlign = 'center'; g.fillText('battery level', 0, 0); g.restore();
+  P.nodes.forEach((n, c) => { const x = padL + c * cw + cw / 2; g.save(); g.translate(x, H - padB + 8); g.rotate(-Math.PI / 4); g.textAlign = 'right';
+    g.fillStyle = n.type === 'charger' ? '#C7D0DC' : (n.type === 'origin' ? '#66BB6A' : '#EF5350'); g.font = (n.type === 'charger' ? '' : 'bold ') + '11px Segoe UI, Arial'; g.fillText(n.label, 0, 0); g.restore(); });
+  g.fillStyle = '#8C99AD'; g.textAlign = 'center'; g.fillText('stations, from start (left) to destination (right)', padL + (W - padL - padR) / 2, H - 3);
+  if (current) { const [x, y] = cellXY(current[0], current[1]); g.strokeStyle = '#FFCD09'; g.lineWidth = 2.5; g.strokeRect(x, y - 1, cw, ch + 2); }
+  if (pathFrac > 0 && P.optimal.length) {
+    const upto = Math.max(1, Math.ceil(P.optimal.length * pathFrac));
+    g.strokeStyle = '#FF4D4D'; g.lineWidth = 3.5; g.lineJoin = 'round'; g.beginPath();
+    P.optimal.slice(0, upto).forEach(([c, b], i) => { const [x, y] = cellXY(c, b); i ? g.lineTo(x + cw / 2, y + ch / 2) : g.moveTo(x + cw / 2, y + ch / 2); }); g.stroke();
+  }
+}
+
+// ---------- narration ----------
+const firstSeen = new Set();
+function code(on) { ['c1', 'c2', 'c3', 'c4', 'c5'].forEach((id, k) => el(id).classList.toggle('on', on.includes(k + 1))); }
+function logLine(t, text, cls) { const d = document.createElement('div'); d.className = 'e' + (cls ? ' ' + cls : '');
+  d.innerHTML = `<span>${t.toFixed(1)} min</span>${text}`; el('log').appendChild(d); el('log').scrollTop = 1e9; }
+function narrate(k) {
+  const [c, b, f, t, s, pc, q, reached, dist] = P.steps[k]; const n = P.nodes[c];
+  const lbl = `<span class="hl">${t.toFixed(1)} min, ${s} stop${s === 1 ? '' : 's'}, ${dist} mi</span>`;
+  let text;
+  if (k === 0) text = `Start at <b>${name(n)}</b> with ${kwh(b)} kWh. Every road out of here starts being explored at once.`;
+  else if (n.type === 'destination') text = `The cheapest state left in the queue is at <b>the destination</b> (${kwh(b)} kWh left), label ${lbl}. Everything still in the queue costs at least this much, so no other plan can be faster. <b>Stop.</b>`;
+  else if (f === 1) text = `Charging at <b>${name(n)}</b>: settled ${kwh(b)} kWh at ${lbl}. Each extra ${dE} kWh is one more state, and every one of them can set off down every road again.`;
+  else text = `Arrived at <b>${name(n)}</b> with <b>${kwh(b)} kWh</b>, driving from ${name(P.nodes[pc])}, at ${lbl}. It was the cheapest state in the queue, so this label is final.`;
+  el('nowk').textContent = `Search front at ${P.steps[k][9].toFixed(1)} min of trip time · state ${k + 1} of ${N}`;
+  el('nowt').innerHTML = text;
+  code(n.type === 'destination' ? [1, 3] : (n.type === 'charger' ? [1, 4, 5] : [1, 4]));
+}
+
+// ---------- clock-driven playback ----------
+let T = -1e-9, i = 0, playing = false, last = 0, finaleAt = null, front = null, lastCam = 0;
+const panelPad = () => (document.body.classList.contains('maponly') && !document.body.classList.contains('nopanel')) ? [380, 0] : [0, 0];
+const allBounds = L.latLngBounds(P.nodes.map(n => [n.lat, n.lon])).pad(0.12);
+function camera(now, force) {
+  if (!el('follow').checked || !front) return;
+  if (!force && now - lastCam < 1100) return;
+  lastCam = now;
+  map.flyToBounds(front.pad(0.35), { duration: 1.0, maxZoom: 11, easeLinearity: 0.4, paddingBottomRight: panelPad() });
+}
+const minutesPerSecond = END / 26;
+function setClock(t) {
+  T = t;
+  let lastK;
+  while (i < N && P.steps[i][9] <= T + 1e-9) {
+    const s = P.steps[i]; const key = s[0] + ',' + s[1]; if (!cells.has(key)) cells.set(key, s[3]);
+    const n = P.nodes[s[0]];
+    if (n.type === 'charger') markers[s[0]].setStyle({ fillColor: ramp(s[3] / maxT), radius: 6 });
+    if (!firstSeen.has(s[0])) { firstSeen.add(s[0]);
+      logLine(s[3], i === 0 ? `start with ${kwh(s[1])} kWh` : (n.type === 'destination' ? 'Destination settled: optimal plan found, search stops' : `first settled at ${name(n)} (${kwh(s[1])} kWh left)`), n.type === 'destination' ? 'goal' : ''); }
+    current = [s[0], s[1]]; el('sQ').textContent = s[6].toLocaleString(); el('sD').textContent = s[7].toLocaleString();
+    lastK = i; i++;
+  }
+  // roads: grow each from its start to its end on the clock (frozen at END)
+  const shown = Math.min(T, END);
+  front = L.latLngBounds([[P.nodes[0].lat, P.nodes[0].lon]]);
+  for (const l of links) {
+    if (shown < l.t0) { if (l.state) { glowLayer.removeLayer(l.glow); lineLayer.removeLayer(l.line); headLayer.removeLayer(l.head); l.state = 0; } continue; }
+    const f = l.t1 > l.t0 ? Math.min(1, (shown - l.t0) / (l.t1 - l.t0)) : 1;
+    const pts = prefix(l, f);
+    if (!l.state) {
+      l.glow = L.polyline(pts, { color: TH.glow, weight: 7, opacity: 0.18, interactive: false }).addTo(glowLayer);
+      l.line = L.polyline(pts, { color: TH.grow, weight: 2.4, opacity: 0.95, interactive: false }).addTo(lineLayer);
+      l.head = L.circleMarker(pts[pts.length - 1], { radius: 3, color: TH.head, weight: 0, fillColor: TH.head, fillOpacity: 1, interactive: false }).addTo(headLayer);
+      l.state = 1;
+    } else { l.glow.setLatLngs(pts); l.line.setLatLngs(pts); l.head.setLatLng(pts[pts.length - 1]); }
+    front.extend(pts[pts.length - 1]);
+    const done = f >= 1;
+    l.head.setStyle({ fillOpacity: done ? 0 : 1 });
+    l.line.setStyle({ color: done ? TH.done : TH.grow, opacity: done ? 0.75 : 0.95 });
+  }
+  rings.forEach((r, c) => { if (!r) return; const w = chargeWin[c]; r.setStyle({ opacity: (shown >= w[0] && shown <= w[1] + 0.5 && T < END) ? 0.9 : 0 }); });
+  markers.forEach(m => m.bringToFront());
+  el('sN').textContent = i.toLocaleString();
+  if (lastK !== undefined) narrate(lastK);
+}
+function finale(now) {
+  const frac = Math.min(1, (now - finaleAt) / 1600);
+  if (frac <= 0.001 || !finalLayer._drawn) {
+    finalLayer.clearLayers(); finalLayer._drawn = true;
+    lineLayer.eachLayer(l => l.setStyle({ opacity: 0.35 })); glowLayer.eachLayer(l => l.setStyle({ opacity: 0.08 }));
+    if (P.greedy) L.polyline(P.greedy.route_points, { color: TH.greedy, weight: 4, opacity: 0.9, dashArray: '8 8' }).addTo(finalLayer);
+    finalLayer._opt = L.polyline([P.route_points[0] || [0, 0]], { color: TH.route, weight: 5, opacity: 1 }).addTo(finalLayer);
+    P.route.forEach((c, k) => { if (k > 0 && k < P.route.length - 1) markers[c].setStyle({ fillColor: TH.stop, radius: 9 }); });
+  }
+  if (P.route_points.length) { const pts = P.route_points, upto = Math.max(2, Math.ceil(pts.length * frac)); finalLayer._opt.setLatLngs(pts.slice(0, upto)); }
+  current = null; drawGrid(frac); markers.forEach(m => m.bringToFront());
+  if (frac >= 1) {
+    const bn = el('banner');
+    bn.innerHTML = P.feasible ? `<span class="opt">Optimal plan: ${P.total_time_minutes.toFixed(1)} min, ${P.stops} stop${P.stops === 1 ? '' : 's'}</span>` +
+      (P.greedy ? `&nbsp;&nbsp;<span class="gr">vs greedy baseline: ${P.greedy.total_time_minutes.toFixed(1)} min</span>` : '') +
+      `<br><span class="gr">Red path: parent pointers followed back from the destination state. Half-drawn green roads were still in the queue when the search stopped.</span>`
+      : 'No feasible plan: the queue emptied before the destination was settled.';
+    bn.style.display = 'block'; playing = false; el('play').textContent = 'Play'; return false;
+  }
+  return true;
+}
+function reset() {
+  playing = false; el('play').textContent = 'Play'; finaleAt = null; i = 0; cells.clear(); current = null; firstSeen.clear();
+  links.forEach(l => { l.state = 0; }); glowLayer.clearLayers(); lineLayer.clearLayers(); headLayer.clearLayers(); finalLayer.clearLayers(); finalLayer._drawn = false;
+  markers.forEach((m, k) => m.setStyle({ fillColor: m._base, radius: P.nodes[k].type === 'charger' ? 5 : 8 })); rings.forEach(r => r && r.setStyle({ opacity: 0 }));
+  el('log').innerHTML = '<div class="k">Milestones</div>'; el('banner').style.display = 'none'; el('sQ').textContent = '1'; el('sD').textContent = '1'; el('sN').textContent = '0';
+  el('nowk').textContent = 'What the algorithm is doing';
+  el('nowt').innerHTML = 'Press <b>Play</b> or <b>Step</b>. The search front starts at the origin and spreads along every road at driving speed, cheapest plans first.';
+  code([]); T = -1e-9; drawGrid(0);
+  if (el('follow').checked) map.setView([P.nodes[0].lat, P.nodes[0].lon], 10); else map.fitBounds(allBounds, { paddingBottomRight: panelPad() });
+}
+function tick(ts) {
+  if (!playing) return;
+  const dt = last ? (ts - last) / 1000 : 0; last = ts;
+  if (finaleAt === null) {
+    setClock(T + dt * minutesPerSecond * parseFloat(el('speed').value)); drawGrid(0); camera(ts);
+    if (i >= N) { finaleAt = ts; if (el('follow').checked) map.flyToBounds(allBounds, { duration: 1.2, paddingBottomRight: panelPad() }); }
+  }
+  if (finaleAt !== null && !finale(ts)) return;
+  requestAnimationFrame(tick);
+}
+el('play').onclick = () => { if (finaleAt !== null && el('banner').style.display === 'block') reset();
+  playing = !playing; el('play').textContent = playing ? 'Pause' : 'Play'; if (playing) { last = 0; requestAnimationFrame(tick); } };
+el('step').onclick = () => { playing = false; el('play').textContent = 'Play'; if (i >= N) return; setClock(P.steps[i][9]); drawGrid(0); camera(performance.now(), true);
+  if (i >= N) { finaleAt = performance.now() - 1600; finale(performance.now()); } };
+el('restart').onclick = () => reset();
+el('end').onclick = () => { playing = false; setClock(END + 1e-6); if (el('follow').checked) map.fitBounds(allBounds, { paddingBottomRight: panelPad() }); finaleAt = performance.now() - 1600; finale(performance.now()); };
+window.addEventListener('resize', () => { layout(); drawGrid(finaleAt !== null ? 1 : 0); });
+layout(); reset();
+window.__replay = { clock: (t) => { setClock(t); drawGrid(0); }, finish: () => el('end').onclick() };
+</script>
+</body></html>
