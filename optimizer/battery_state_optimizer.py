@@ -41,6 +41,21 @@ State = tuple[str, int, int]
 Label = tuple[int, int, float]
 
 
+class SettleRecord(NamedTuple):
+    """One settled state, as reported to ``solve(..., trace=[])``.
+
+    ``parent`` is the state it was reached from (``None`` for the start),
+    ``reached`` the number of states with a label so far, and ``queue`` the heap
+    size, stale entries included, after the pop.
+    """
+
+    state: State
+    label: Label
+    parent: State | None
+    reached: int
+    queue: int
+
+
 class _Road(NamedTuple):
     """One outgoing edge with its discretized energy and integer drive time."""
 
@@ -50,12 +65,22 @@ class _Road(NamedTuple):
     drive_ms: int
 
 
-def solve(graph: dict, config: dict, *, use_heuristic: bool = False) -> dict:
+def solve(
+    graph: dict,
+    config: dict,
+    *,
+    use_heuristic: bool = False,
+    trace: list | None = None,
+) -> dict:
     """Return an ``algorithm_result`` dict for label-setting or A*.
 
     ``use_heuristic=False`` reports ``algorithm`` = ``label_setting``.
     ``use_heuristic=True`` reports ``algorithm`` = ``astar`` and orders the
     queue with the Section 11.3 heuristic. Both return the same label.
+
+    ``trace``, when given, receives one ``SettleRecord`` per settled state, in
+    the order the search settled them. It only observes the search: labels,
+    plans, and state counts are identical with or without it.
     """
     algorithm = "astar" if use_heuristic else "label_setting"
     started = time.perf_counter()
@@ -104,6 +129,11 @@ def solve(graph: dict, config: dict, *, use_heuristic: bool = False) -> dict:
         if best.get(state) != label:
             continue
         expanded += 1
+        if trace is not None:
+            link = parent[state]
+            trace.append(
+                SettleRecord(state, label, link[0] if link else None, len(best), len(queue))
+            )
         location, battery, flag = state
         if location == destination:
             goal = state

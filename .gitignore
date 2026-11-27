@@ -44,3 +44,4 @@ plots/**
 !plots/.gitkeep
 *.csv
 !tests/fixtures/**/*.csv
+.route_cache/

@@ -17,8 +17,12 @@ Write a standalone HTML file with::
 from __future__ import annotations
 
 import argparse
+import hashlib
 import html
+import json
 import sys
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -31,6 +35,14 @@ STOP_COLOR = "#ef6c00"
 ROUTE_COLOR = "#1565c0"
 PASS_THROUGH_COLOR = "#6a1b9a"
 UNUSED_COLOR = "#757575"
+
+# Road-following leg geometry is for drawing only. The optimizer's distances and
+# times come from canonical_graph.json and are never changed by it.
+ROAD_CACHE_DIR = Path(".route_cache")
+OSRM_ROUTE_URL = (
+    "https://router.project-osrm.org/route/v1/driving/"
+    "{lon1},{lat1};{lon2},{lat2}?overview=full&geometries=geojson"
+)
 
 
 @dataclass(frozen=True)
@@ -133,11 +145,57 @@ def build_map_model(graph: dict, result: dict) -> MapModel:
     )
 
 
-def render_map(graph: dict, result: dict):
+def road_geometry(
+    start: dict, end: dict, cache_dir: Path = ROAD_CACHE_DIR, timeout: float = 8.0
+) -> list[tuple[float, float]] | None:
+    """Road-following (lat, lon) points from ``start`` to ``end``, or ``None``.
+
+    Display only. Fetched once from the public OSRM router and cached under
+    ``cache_dir``; any network or parse failure returns ``None`` so the caller
+    falls back to a straight segment.
+    """
+    key = f"{start['lat']:.5f},{start['lon']:.5f}->{end['lat']:.5f},{end['lon']:.5f}"
+    path = Path(cache_dir) / (hashlib.sha1(key.encode()).hexdigest() + ".json")
+    if path.is_file():
+        try:
+            return [(lat, lon) for lat, lon in json.loads(path.read_text())]
+        except (ValueError, TypeError):
+            pass
+    url = OSRM_ROUTE_URL.format(
+        lon1=start["lon"], lat1=start["lat"], lon2=end["lon"], lat2=end["lat"]
+    )
+    request = urllib.request.Request(url, headers={"User-Agent": "ChargePlan-visualizer"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            coords = json.load(response)["routes"][0]["geometry"]["coordinates"]
+    except (
+        urllib.error.URLError,
+        OSError,
+        TimeoutError,
+        ValueError,
+        KeyError,
+        IndexError,
+        TypeError,
+    ):
+        return None
+    points = [(float(lat), float(lon)) for lon, lat in coords]
+    if len(points) < 2:
+        return None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(points))
+    except OSError:
+        pass
+    return points
+
+
+def render_map(graph: dict, result: dict, *, road_lines: bool = False):
     """Return a ``folium.Map`` for the selected route.
 
     Layers: route, selected charging stops, unused chargers, origin and
     destination. An infeasible result draws no route and says so on the map.
+    With ``road_lines`` each leg is drawn along real roads (display only, see
+    ``road_geometry``); a leg whose geometry is unavailable stays straight.
     """
     import folium
 
@@ -147,8 +205,9 @@ def render_map(graph: dict, result: dict):
     route_group = folium.FeatureGroup(name="Optimized route", show=True)
     for index, leg in enumerate(model.legs):
         start, end = model.route[index], model.route[index + 1]
+        points = road_geometry(start, end) if road_lines else None
         line = folium.PolyLine(
-            [(start["lat"], start["lon"]), (end["lat"], end["lon"])],
+            points or [(start["lat"], start["lon"]), (end["lat"], end["lon"])],
             color=ROUTE_COLOR,
             weight=5,
             opacity=0.85,

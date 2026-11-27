@@ -117,6 +117,46 @@ def render_comparison_panel(st, result: dict, greedy_path: Path | None) -> None:
     st.table(comparison_table(comparison))
 
 
+REPLAY_HEIGHT = MAP_HEIGHT + 90
+REPLAY_ALGORITHMS = ("label_setting", "astar")
+
+
+def build_search_replay(
+    st, graph: dict, trip: dict | None, result: dict, greedy_path: Path | None, road_lines: bool
+) -> str | None:
+    """Run the optimizer again with a trace and return the animated map page.
+
+    Returns ``None`` (after explaining why) when the replay cannot be built.
+    """
+    from visualizer.data_io import VisualizerInputError, load_result
+    from visualizer.map_view import road_geometry
+    from visualizer.search_replay import build_payload, capture, replay_html
+
+    if trip is None:
+        st.info("The search animation needs the trip configuration (trip_config.json).")
+        return None
+    algorithm = result["algorithm"] if result["algorithm"] in REPLAY_ALGORITHMS else "label_setting"
+    if result["algorithm"] not in REPLAY_ALGORITHMS:
+        st.caption(f"The animation shows label_setting; {result['algorithm']} is not traced.")
+    greedy = None
+    if greedy_path is not None:
+        try:
+            greedy = load_result(greedy_path)
+        except VisualizerInputError:
+            greedy = None
+    traced, trace = capture(graph, trip, use_heuristic=algorithm == "astar")
+    with st.spinner("Preparing the animation (road shapes are fetched once, then cached)..."):
+        payload = build_payload(
+            graph,
+            trip,
+            traced,
+            trace,
+            greedy=greedy,
+            leg_geometry=road_geometry if road_lines else None,
+        )
+    return replay_html(payload, layout="map")
+
+
 @dataclass(frozen=True)
 class SelectedInputs:
     """The files the page draws, from either input mode."""
@@ -242,6 +282,23 @@ def run_app(argv: list[str]) -> None:
             scenarios_dir = st.text_input("Scenarios (H5 folders)", value=args.scenarios)
             results_dir = st.text_input("Results (S9 output)", value=args.results)
             args.scenarios, args.results = scenarios_dir, results_dir
+        animate = st.toggle(
+            "Animate the search on the map",
+            value=False,
+            help=(
+                "Runs the optimizer on this trip now and plays its search back on the map: "
+                "the roads it explores, in the order it explores them, then the optimal plan."
+            ),
+        )
+        road_lines = st.checkbox(
+            "Draw legs along roads",
+            value=True,
+            help=(
+                "Display only: each leg is drawn along real roads (OSRM, cached in "
+                ".route_cache). Trip times and distances still come from the graph's "
+                "estimated road distances."
+            ),
+        )
 
     if mode == scenario_label:
         entries = discover_scenarios(args.scenarios, args.results)
@@ -255,13 +312,18 @@ def run_app(argv: list[str]) -> None:
         graph = load_graph(selected.graph)
         result = load_result(selected.result)
         trip = load_trip_config(selected.trip) if selected.trip.strip() else None
-        fmap = render_map(graph, result)
+        fmap = render_map(graph, result, road_lines=road_lines)
     except VisualizerInputError as exc:
         st.error(str(exc))
         return
 
     if selected.notes:
         st.caption(" | ".join(selected.notes))
+    if road_lines:
+        st.caption(
+            "Route legs are drawn along real roads for display; trip numbers use the "
+            "model's estimated road distances."
+        )
     if result["status"] == "FEASIBLE":
         st.caption(
             f"{result['algorithm']}: {result['number_of_charging_stops']} charging stop(s), "
@@ -269,7 +331,15 @@ def run_app(argv: list[str]) -> None:
         )
     else:
         st.warning(f"{result['algorithm']} found no feasible plan for this trip.")
-    st.iframe(fmap.get_root().render(), height=MAP_HEIGHT)
+    replay = (
+        build_search_replay(st, graph, trip, result, selected.greedy, road_lines)
+        if animate
+        else None
+    )
+    if replay is not None:
+        st.iframe(replay, height=REPLAY_HEIGHT)
+    else:
+        st.iframe(fmap.get_root().render(), height=MAP_HEIGHT)
 
     st.subheader("Trip summary")
     summary = build_trip_summary(result, trip)
